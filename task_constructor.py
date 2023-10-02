@@ -57,114 +57,28 @@ name2dataset = {
 }
 
 
-def ArxivNodeClsTask(name, dataset, **kwargs):
+def ArxivSplitter(dataset):
     text_g = dataset.data
-    text_g.x = text_g.x_text_feat
-    text_g.prompt_edge_feat = dataset.prompt_edge_feat
     kfold = k_fold_ind(text_g.y, 10)
     text_split = k_fold2_split(kfold, len(text_g.y))[0]
-
-    def trim_class(label, num_class):
-        binary_rep = torch.zeros((1, num_class))
-        binary_rep[0, label] = 1
-        return label.view(1, -1), binary_rep
-
-    def make_data(split_name, state_name):
-        return DataWithMeta(
-            SubgraphHierDataset(
-                text_g,
-                text_g.label_text_feat,
-                text_split[split_name],
-                prompt_feat=text_g.prompt_text_feat,
-                to_undirected=True,
-                trim_class_func=trim_class,
-                walk_length=kwargs["walk_length"],
-            ),
-            kwargs["batch_size"],
-            sample_size=kwargs["sample_size"],
-            metric="acc",
-            state_name=state_name,
-            classes=40,
-            meta_data={"eval_func": classification_func},
-        )
-
-    split_data = {
-        "train": [
-            SubgraphHierDataset(
-                text_g,
-                text_g.label_text_feat,
-                text_split[0],
-                prompt_feat=text_g.prompt_text_feat,
-                to_undirected=True,
-                trim_class_func=trim_class,
-                walk_length=kwargs["walk_length"],
-            )
-        ],
-        "test": [
-            make_data(2, "test_arxiv"),
-            make_data(0, "test_train_arxiv"),
-        ],
-        "val": [make_data(1, "valid_arxiv")],
-    }
-    return split_data
+    split = {}
+    split["train"] = text_split[0]
+    split["valid"] = text_split[1]
+    split["test"] = text_split[2]
+    return split
 
 
-def CiteNodeClsTask(name, dataset, **kwargs):
+def CiteSplitter(dataset):
     text_g = dataset.data
-    text_g.x = text_g.x_text_feat
-    text_g.prompt_edge_feat = dataset.prompt_edge_feat
     split = {
         "train": text_g.train_masks[0].nonzero(as_tuple=True)[0],
-        "val": text_g.val_masks[0].nonzero(as_tuple=True)[0],
+        "valid": text_g.val_masks[0].nonzero(as_tuple=True)[0],
         "test": text_g.test_masks[0].nonzero(as_tuple=True)[0],
     }
-
-    def trim_class(label, num_class):
-        binary_rep = torch.zeros((1, num_class))
-        binary_rep[0, label] = 1
-        return torch.tensor([label]).view(1, -1), binary_rep
-
-    def make_data(split_name, state_name):
-        return DataWithMeta(
-            SubgraphHierDataset(
-                text_g,
-                text_g.label_text_feat,
-                split[split_name],
-                prompt_feat=text_g.prompt_node_feat,
-                to_undirected=True,
-                trim_class_func=trim_class,
-                walk_length=kwargs["walk_length"],
-            ),
-            kwargs["batch_size"],
-            sample_size=kwargs["sample_size"],
-            metric="acc",
-            state_name=state_name,
-            classes=len(text_g.label_text_feat),
-            meta_data={"eval_func": classification_func},
-        )
-
-    split_data = {
-        "train": [
-            SubgraphHierDataset(
-                text_g,
-                text_g.label_text_feat,
-                split["train"],
-                prompt_feat=text_g.prompt_node_feat,
-                to_undirected=True,
-                trim_class_func=trim_class,
-                walk_length=kwargs["walk_length"],
-            )
-        ],
-        "test": [
-            make_data("test", "test_" + name),
-            make_data("train", "test_train_" + name),
-        ],
-        "val": [make_data("val", "valid_" + name)],
-    }
-    return split_data
+    return split
 
 
-def CiteLinkTask(name, dataset, **kwargs):
+def CiteLinkSplitter(dataset):
     text_g = dataset.data
     text_g.x = text_g.x_text_feat
     text_g.prompt_edge_feat = dataset.prompt_edge_feat
@@ -177,8 +91,86 @@ def CiteLinkTask(name, dataset, **kwargs):
         "val": edge_perm[train_offset:val_offset],
         "test": edge_perm[val_offset:],
     }
+    return edge_indices
+
+
+def KGSplitter(dataset):
+    converted_triplet = dataset.get_idx_split()
+    return converted_triplet
+
+
+def WikiSplitter(dataset):
+    text_g = dataset.data
+    wiki_split_idx = 0
+    split = {
+        "train": torch.where(text_g.train_mask[:, wiki_split_idx])[0].numpy(),
+        "valid": torch.where(text_g.val_mask[:, wiki_split_idx])[0].numpy(),
+        "test": torch.where(text_g.test_mask)[0].numpy(),
+    }
+    return split
+
+
+def MolSplitter(dataset):
+    return dataset.get_idx_split()
+
+
+name2splitter = {
+    "arxiv": ArxivSplitter,
+    "cora_node": CiteSplitter,
+    "pubmed_node": CiteSplitter,
+    "cora_link": CiteLinkSplitter,
+    "pubmed_link": CiteLinkSplitter,
+    "WN18RR": KGSplitter,
+    "FB15K237": KGSplitter,
+    "wikics": WikiSplitter,
+    "chemblpre": MolSplitter,
+    "chempcba": MolSplitter,
+    "chemhiv": MolSplitter,
+}
+
+
+def make_data(
+    name, data, split_name, metric, eval_func, num_classes, **kwargs
+):
+    return DataWithMeta(
+        data,
+        kwargs["batch_size"],
+        sample_size=kwargs["sample_size"],
+        metric=metric,
+        state_name=split_name + "_" + name,
+        classes=num_classes,
+        meta_data={"eval_func": eval_func},
+    )
+
+
+def ConstructNodeClsTrain(name, dataset, split, split_name, **kwargs):
+    text_g = dataset.data
+    text_g.x = text_g.x_text_feat
+    text_g.prompt_edge_feat = dataset.prompt_edge_feat
+
+    def trim_class(label, num_class):
+        binary_rep = torch.zeros((1, num_class))
+        binary_rep[0, label] = 1
+        return label.view(1, -1), binary_rep
+
+    return SubgraphHierDataset(
+        text_g,
+        text_g.label_text_feat,
+        split[split_name],
+        prompt_feat=text_g.prompt_text_feat,
+        to_undirected=True,
+        trim_class_func=trim_class,
+        walk_length=kwargs["walk_length"],
+    )
+
+
+def ConstructLinkTrain(name, dataset, split, **kwargs):
+    text_g = dataset.data
+    text_g.x = text_g.x_text_feat
+    text_g.prompt_edge_feat = dataset.prompt_edge_feat
+    edges = text_g.edge_index
     graph_dict = text_g.to_dict()
-    graph_dict["edge_index"] = edges[:, edge_indices["train"]]
+    graph_dict["edge_index"] = edges[:, split["train"]]
     train_graph = pyg.data.Data(**graph_dict)
 
     def trim_class(label, num_class):
@@ -186,164 +178,43 @@ def CiteLinkTask(name, dataset, **kwargs):
         binary_rep[0, label] = 1
         return torch.tensor([label]).view(1, -1), binary_rep
 
-    def make_data(split_name, state_name, remove_edge=False):
-        return DataWithMeta(
-            SubgraphLinkHierDataset(
-                train_graph,
-                train_graph.edge_label_feat,
-                edges.T[edge_indices[split_name]].numpy(),
-                prompt_feat=train_graph.prompt_node_edge_feat,
-                to_undirected=True,
-                hop=3,
-                remove_edge=remove_edge,
-                trim_class_func=trim_class,
-                walk_length=kwargs["walk_length"],
-            ),
-            kwargs["batch_size"],
-            sample_size=kwargs["sample_size"],
-            metric="auc",
-            state_name=state_name,
-            classes=2,
-            meta_data={"eval_func": binary_auc_func},
-        )
-
-    split_data = {
-        "train": [
-            SubgraphLinkHierDataset(
-                train_graph,
-                train_graph.edge_label_feat,
-                edges.T[edge_indices["train"]].numpy(),
-                prompt_feat=train_graph.prompt_node_edge_feat,
-                to_undirected=True,
-                hop=3,
-                remove_edge=True,
-                trim_class_func=trim_class,
-                walk_length=kwargs["walk_length"],
-            )
-        ],
-        "test": [
-            make_data("test", "test_" + name, remove_edge=False),
-            make_data("train", "test_train_" + name, remove_edge=True),
-        ],
-        "val": [make_data("val", "valid_" + name, remove_edge=False)],
-    }
-    return split_data
+    return SubgraphLinkHierDataset(
+        train_graph,
+        train_graph.edge_label_feat,
+        edges.T[split["train"]].numpy(),
+        prompt_feat=train_graph.prompt_node_edge_feat,
+        to_undirected=True,
+        hop=3,
+        remove_edge=True,
+        trim_class_func=trim_class,
+        walk_length=kwargs["walk_length"],
+    )
 
 
-def KGLinkTask(name, dataset, **kwargs):
+def ConstructKGTrain(name, dataset, split, **kwargs):
     text_g = dataset.data
     text_g.x = text_g.x_text_feat
     text_g.prompt_edge_feat = dataset.prompt_edge_feat
-    converted_triplet = dataset.get_idx_split()
 
     def trim_class(label, num_class):
         binary_rep = torch.zeros((1, num_class))
         binary_rep[0, label] = 1
         return torch.tensor([label]).view(1, -1), binary_rep
 
-    def make_data(split_name, state_name, remove_edge=False):
-        return DataWithMeta(
-            SubgraphKGHierDataset(
-                text_g,
-                text_g.edge_label_feat,
-                converted_triplet[split_name],
-                prompt_feat=text_g.prompt_text_feat,
-                to_undirected=True,
-                hop=2,
-                remove_edge=remove_edge,
-                trim_class_func=trim_class,
-                walk_length=kwargs["walk_length"],
-            ),
-            kwargs["batch_size"],
-            sample_size=kwargs["sample_size"],
-            metric="acc",
-            state_name=state_name,
-            classes=len(text_g.edge_label_feat),
-            meta_data={"eval_func": classification_func},
-        )
-
-    split_data = {
-        "train": [
-            SubgraphKGHierDataset(
-                text_g,
-                text_g.edge_label_feat,
-                converted_triplet["train"],
-                prompt_feat=text_g.prompt_text_feat,
-                to_undirected=True,
-                hop=2,
-                remove_edge=True,
-                trim_class_func=trim_class,
-                walk_length=kwargs["walk_length"],
-            )
-        ],
-        "test": [
-            make_data("test", "test_" + name, remove_edge=False),
-            make_data("train", "test_train_" + name, remove_edge=True),
-        ],
-        "val": [make_data("valid", "valid_" + name, remove_edge=False)],
-    }
-    return split_data
+    return SubgraphKGHierDataset(
+        text_g,
+        text_g.edge_label_feat,
+        split["train"],
+        prompt_feat=text_g.prompt_text_feat,
+        to_undirected=True,
+        hop=2,
+        remove_edge=True,
+        trim_class_func=trim_class,
+        walk_length=kwargs["walk_length"],
+    )
 
 
-def WikiNodeClsTask(name, dataset, **kwargs):
-    text_g = dataset.data
-    text_g.x = text_g.x_text_feat
-    text_g.prompt_edge_feat = dataset.prompt_edge_feat
-    wiki_split_idx = 0
-    split = [
-        torch.where(text_g.train_mask[:, wiki_split_idx])[0].numpy(),
-        torch.where(text_g.val_mask[:, wiki_split_idx])[0].numpy(),
-        torch.where(text_g.test_mask)[0].numpy(),
-    ]
-
-    def trim_class(label, num_class):
-        binary_rep = torch.zeros((1, num_class))
-        binary_rep[0, label] = 1
-        return torch.tensor([label]).view(1, -1), binary_rep
-
-    def make_data(split_name, state_name):
-        return DataWithMeta(
-            SubgraphHierDataset(
-                text_g,
-                text_g.label_text_feat,
-                split[split_name],
-                prompt_feat=text_g.prompt_node_feat,
-                to_undirected=True,
-                trim_class_func=trim_class,
-                walk_length=kwargs["walk_length"],
-            ),
-            kwargs["batch_size"],
-            sample_size=kwargs["sample_size"],
-            metric="acc",
-            state_name=state_name,
-            classes=len(text_g.label_text_feat),
-            meta_data={"eval_func": classification_func},
-        )
-
-    split_data = {
-        "train": [
-            SubgraphHierDataset(
-                text_g,
-                text_g.label_text_feat,
-                split["train"],
-                prompt_feat=text_g.prompt_node_feat,
-                to_undirected=True,
-                trim_class_func=trim_class,
-                walk_length=kwargs["walk_length"],
-            )
-        ],
-        "test": [
-            make_data("test", "test_" + name),
-            make_data("train", "test_train_" + name),
-        ],
-        "val": [make_data("val", "valid_" + name)],
-    }
-    return split_data
-
-
-def MOLMultiClsTask(name, dataset, **kwargs):
-    split = dataset.get_idx_split()
-
+def ConstructMolMultiClsTrain(name, dataset, split, **kwargs):
     def trim_class(embs, classes):
         valid_idx = classes == classes
         # valid_idx = torch.zeros_like(classes, dtype=torch.bool)
@@ -353,116 +224,38 @@ def MOLMultiClsTask(name, dataset, **kwargs):
             classes[:, valid_idx.view(-1)].detach().clone(),
         )
 
-    def make_data(split_name, state_name):
-        return DataWithMeta(
-            GraphListHierDataset(
-                dataset,
-                dataset.label_text_feat,
-                dataset.prompt_edge_feat,
-                dataset.prompt_text_feat,
-                split[split_name],
-                single_prompt_edge=True,
-                # trim_class_func=trim_class,
-                walk_length=kwargs["walk_length"],
-            ),
-            kwargs["batch_size"],
-            sample_size=kwargs["sample_size"],
-            metric="apr",
-            state_name=state_name,
-            classes=len(dataset.label_text_feat),
-            meta_data={"eval_func": binary_apr_func},
-        )
-
-    split_data = {
-        "train": [
-            GraphListHierDataset(
-                dataset,
-                dataset.label_text_feat,
-                dataset.prompt_edge_feat,
-                dataset.prompt_text_feat,
-                split["train"],
-                trim_class_func=trim_class,
-                single_prompt_edge=True,
-                walk_length=kwargs["walk_length"],
-            )
-        ],
-        "test": [
-            make_data("test", "test_" + name),
-            make_data("train", "test_train_" + name),
-        ],
-        "val": [make_data("valid", "valid_" + name)],
-    }
-    return split_data
+    return GraphListHierDataset(
+        dataset,
+        dataset.label_text_feat,
+        dataset.prompt_edge_feat,
+        dataset.prompt_text_feat,
+        split["train"],
+        trim_class_func=trim_class,
+        single_prompt_edge=True,
+        walk_length=kwargs["walk_length"],
+    )
 
 
-def MOLClsTask(name, dataset, **kwargs):
-    split = dataset.get_idx_split()
-
-    # def trim_class(embs, classes):
-    #     valid_idx = classes == classes
-    #     # valid_idx = torch.zeros_like(classes, dtype=torch.bool)
-    #     return (
-    #         torch.tensor([[0]]),
-    #         embs[valid_idx.view(-1)].detach().clone(),
-    #         classes[:, valid_idx.view(-1)].detach().clone(),
-    #     )
-
+def ConstructMolTrain(name, dataset, split, **kwargs):
     def trim_class(embs, label):
         label = label.to(torch.long)
         one_hot_label = torch.nn.functional.one_hot(label, num_classes=2)
         return label, embs, one_hot_label
 
-    # print(sub_dataset.label_text_feat.size())
-
-    def make_data(split_name, state_name):
-        return DataWithMeta(
-            GraphListHierDataset(
-                dataset,
-                dataset.label_text_feat,
-                dataset.prompt_edge_feat,
-                dataset.prompt_text_feat,
-                split[split_name],
-                single_prompt_edge=True,
-                # trim_class_func=trim_class,
-                walk_length=kwargs["walk_length"],
-            ),
-            kwargs["batch_size"],
-            sample_size=kwargs["sample_size"],
-            metric="auc",
-            state_name=state_name,
-            classes=len(dataset.label_text_feat),
-            meta_data={"eval_func": binary_auc_func},
-        )
-
-    split_data = {
-        "train": [
-            GraphListHierDataset(
-                dataset,
-                dataset.label_text_feat,
-                dataset.prompt_edge_feat,
-                dataset.prompt_text_feat,
-                split["train"],
-                trim_class_func=trim_class,
-                single_prompt_edge=True,
-                walk_length=kwargs["walk_length"],
-            )
-        ],
-        "test": [
-            make_data("test", "test_" + name),
-            make_data("train", "test_train_" + name),
-        ],
-        "val": [make_data("valid", "valid_" + name)],
-    }
-    return split_data
+    return GraphListHierDataset(
+        dataset,
+        dataset.label_text_feat,
+        dataset.prompt_edge_feat,
+        dataset.prompt_text_feat,
+        split["train"],
+        trim_class_func=trim_class,
+        single_prompt_edge=True,
+        walk_length=kwargs["walk_length"],
+    )
 
 
-def MOLZeroClsTask(name, dataset, **kwargs):
-    chembl_dataset = dataset[0]
-    hiv_dataset = dataset[1]
-    pcba_dataset = dataset[2]
-    hiv_split = hiv_dataset.get_idx_split()
-    chembl_split = chembl_dataset.get_idx_split()
-    pcba_split = pcba_dataset.get_idx_split()
+def ConstructMolFSTrain(name, dataset, split, **kwargs):
+    classes = dataset.y.view(len(dataset), -1)[split["train"]]
 
     def trim_class(embs, classes):
         valid_idx = classes == classes
@@ -473,199 +266,17 @@ def MOLZeroClsTask(name, dataset, **kwargs):
             classes[:, valid_idx.view(-1)].detach().clone(),
         )
 
-    def hiv_trim_class(embs, label):
-        # one_hot_label = torch.nn.functional.one_hot(
-        #     label.to(torch.long), num_classes=2
-        # )
-        return label, embs[0:1], label
-
-    def make_data(split_name, state_name):
-        return DataWithMeta(
-            GraphListHierDataset(
-                hiv_dataset,
-                hiv_dataset.label_text_feat,
-                hiv_dataset.prompt_edge_feat,
-                hiv_dataset.prompt_text_feat,
-                hiv_split[split_name],
-                trim_class_func=hiv_trim_class,
-                single_prompt_edge=True,
-                walk_length=kwargs["walk_length"],
-            ),
-            kwargs["batch_size"],
-            sample_size=kwargs["sample_size"],
-            metric="auc",
-            state_name=state_name,
-            classes=1,
-            meta_data={"eval_func": binary_single_auc_func},
-        )
-
-    def make_pcba_data(split_name, state_name):
-        return DataWithMeta(
-            GraphListHierDataset(
-                pcba_dataset,
-                pcba_dataset.label_text_feat,
-                pcba_dataset.prompt_edge_feat,
-                pcba_dataset.prompt_text_feat,
-                pcba_split[split_name],
-                # trim_class_func=trim_class,
-                single_prompt_edge=True,
-                walk_length=kwargs["walk_length"],
-            ),
-            kwargs["batch_size"],
-            sample_size=kwargs["sample_size"],
-            metric="aucmulti",
-            state_name=state_name,
-            classes=128,
-            meta_data={"eval_func": binary_auc_multi_func},
-        )
-
-    split_data = {
-        "train": [
-            GraphListHierDataset(
-                chembl_dataset,
-                chembl_dataset.label_text_feat,
-                chembl_dataset.prompt_edge_feat,
-                chembl_dataset.prompt_text_feat,
-                chembl_split["train"],
-                trim_class_func=trim_class,
-                single_prompt_edge=True,
-                walk_length=kwargs["walk_length"],
-            )
-        ],
-        "test": [
-            make_data("test", "test_molhiv"),
-            # make_data("train", "test_train_molhiv"),
-            make_pcba_data("test", "test_pcba"),
-        ],
-        "val": [
-            make_data("valid", "valid_molhiv"),
-            make_pcba_data("valid", "valid_pcba"),
-        ],
-    }
-    return split_data
-
-
-def MOLFewClsTask(name, dataset, **kwargs):
-    chembl_dataset = dataset[0]
-    hiv_dataset = dataset[1]
-    pcba_dataset = dataset[2]
-    pcba_split = pcba_dataset.get_idx_split()
-    hiv_split = hiv_dataset.get_idx_split()
-    chembl_split = chembl_dataset.get_idx_split()
-    chembl_classes = chembl_dataset.y.view(len(chembl_dataset), -1)[
-        chembl_split["train"]
-    ]
-
-    pcba_classes = [49, 60, 47, 94, 93]
-    shots = [1, 3, 5, 10]
-
-    def trim_class(embs, classes):
-        valid_idx = classes == classes
-        # valid_idx = torch.zeros_like(classes, dtype=torch.bool)
-        return (
-            torch.tensor([[0]]),
-            embs[valid_idx.view(-1)].detach().clone(),
-            classes[:, valid_idx.view(-1)].detach().clone(),
-        )
-
-    def hiv_trim_class(embs, label):
-        one_hot_label = torch.nn.functional.one_hot(
-            label.to(torch.long), num_classes=2
-        )
-        return label, embs, one_hot_label
-
-    def make_data(split_name, state_name, shot=1):
-        return DataWithMeta(
-            GraphListHierFSDataset(
-                hiv_dataset,
-                hiv_dataset.label_text_feat,
-                hiv_dataset.prompt_edge_feat,
-                hiv_dataset.prompt_text_feat,
-                hiv_split[split_name],
-                trim_class_func=hiv_trim_class,
-                single_prompt_edge=True,
-                walk_length=kwargs["walk_length"],
-                class_ind=hiv_dataset.y.view(len(hiv_dataset), -1)[
-                    hiv_split[split_name], 0:1
-                ],
-                shot=shot,
-            ),
-            kwargs["batch_size"],
-            sample_size=kwargs["sample_size"],
-            metric="auc",
-            state_name=state_name,
-            classes=1,
-            meta_data={"eval_func": binary_single_auc_func},
-        )
-
-    def make_pcba_data(split_name, state_name, shot=1, target_class=None):
-        return DataWithMeta(
-            GraphListHierFSDataset(
-                pcba_dataset,
-                pcba_dataset.label_text_feat,
-                pcba_dataset.prompt_edge_feat,
-                pcba_dataset.prompt_text_feat,
-                pcba_split[split_name],
-                single_prompt_edge=True,
-                walk_length=kwargs["walk_length"],
-                class_ind=pcba_dataset.y.view(len(pcba_dataset), -1)[
-                    pcba_split[split_name]
-                ],
-                shot=shot,
-                target_class=target_class,
-            ),
-            kwargs["batch_size"],
-            sample_size=kwargs["sample_size"],
-            metric="auc",
-            state_name=state_name,
-            classes=1,
-            meta_data={"eval_func": binary_single_auc_func},
-        )
-
-    hiv_val_data = [
-        make_data("valid", "valid_hiv_" + str(i), i) for i in shots
-    ]
-    hiv_test_data = [make_data("test", "test_hiv_" + str(i), i) for i in shots]
-
-    pcba_val_data = [
-        make_pcba_data(
-            "valid",
-            "valid_pcba_" + str(i) + "_" + str(j),
-            i,
-            torch.tensor([j]),
-        )
-        for i in shots
-        for j in pcba_classes
-    ]
-    pcba_test_data = [
-        make_pcba_data(
-            "test",
-            "test_pcba_" + str(i) + "_" + str(j),
-            i,
-            torch.tensor([j]),
-        )
-        for i in shots
-        for j in pcba_classes
-    ]
-
-    split_data = {
-        "train": [
-            GraphListHierFSDataset(
-                chembl_dataset,
-                chembl_dataset.label_text_feat,
-                chembl_dataset.prompt_edge_feat,
-                chembl_dataset.prompt_text_feat,
-                chembl_split["train"],
-                trim_class_func=trim_class,
-                single_prompt_edge=True,
-                walk_length=kwargs["walk_length"],
-                class_ind=chembl_classes,
-            )
-        ],
-        "test": hiv_test_data + pcba_test_data,
-        "val": hiv_val_data + pcba_val_data,
-    }
-    return split_data
+    return GraphListHierFSDataset(
+        dataset,
+        dataset.label_text_feat,
+        dataset.prompt_edge_feat,
+        dataset.prompt_text_feat,
+        split["train"],
+        trim_class_func=trim_class,
+        single_prompt_edge=True,
+        walk_length=kwargs["walk_length"],
+        class_ind=classes,
+    )
 
 
 taskname2func = {
