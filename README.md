@@ -1,5 +1,7 @@
 # Code for *One for All: Towards Training One Graph Model for All Classification Tasks*
 
+Paper: [https://arxiv.org/abs/2310.00149](https://arxiv.org/abs/2310.00149)
+
 OFA is a general Graph Classification Framework that can solves a wide range of graph classification tasks with a single model and a single set of parameters. The tasks are cross-domain (e.g. citation network, molecular graph,...) and cross-tasks (e.g. few-shot, zero-shot, graph-level, node-leve,...)
 
 OFA use natural languages to describe all graphs, and use a LLM to embed all description in the same embedding space, which enable cross-domain training using a single model.
