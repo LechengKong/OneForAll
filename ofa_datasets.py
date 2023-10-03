@@ -13,8 +13,9 @@ from gp.utils.utils import SmartTimer
 
 
 class GraphTextDataset(DatasetWithCollate):
-    def __init__(self, graph, **kwargs):
+    def __init__(self, graph, process_label_func, **kwargs):
         self.g = graph
+        self.process_label_func = process_label_func
         self.kwargs = kwargs
 
     def __getitem__(self, index):
@@ -40,6 +41,14 @@ class GraphTextDataset(DatasetWithCollate):
     def get_collate_fn(self):
         return pyg.loader.dataloader.Collater(None, None)
 
+    def process_label(self, label):
+        if self.process_label_func is None:
+            trimed_class = torch.zeros((1, len(self.class_emb)))
+            trimed_class[0, label] = 1
+            return label, self.class_emb, trimed_class
+        else:
+            return self.process_label_func(self.class_emb, label)
+
 
 class SubgraphDataset(GraphTextDataset):
     def __init__(
@@ -50,11 +59,11 @@ class SubgraphDataset(GraphTextDataset):
         hop=2,
         class_mapping=None,
         to_undirected=False,
-        trim_class_func=None,
+        process_label_func=None,
         adj=None,
         **kwargs,
     ):
-        super().__init__(pyg_graph, **kwargs)
+        super().__init__(pyg_graph, process_label_func, **kwargs)
         self.to_undirected = to_undirected
         edge_index = self.g.edge_index
         if self.to_undirected:
@@ -73,18 +82,9 @@ class SubgraphDataset(GraphTextDataset):
         self.hop = hop
         self.data_idx = data_idx
         self.class_mapping = class_mapping
-        self.trim_class_func = trim_class_func
 
     def __len__(self):
         return len(self.data_idx)
-
-    def trim_class(self, label):
-        if self.trim_class_func is None:
-            trimed_class = torch.zeros((1, len(self.class_emb)))
-            trimed_class[0, label] = 1
-            return label, trimed_class
-        else:
-            return self.trim_class_func(label, len(self.class_emb))
 
     def get_neighbors(self, index):
         node_id = self.data_idx[index]
@@ -103,7 +103,7 @@ class SubgraphDataset(GraphTextDataset):
                 torch.tensor(edges.col, dtype=torch.long),
             ]
         )
-        label, binary_rep = self.trim_class(label)
+        label, emb, binary_rep = self.process_label(label)
         return edge_index, neighbors, label, binary_rep, [0]
 
     def make_feature_graph(self, index):
@@ -225,7 +225,7 @@ class SubgraphHierDataset(SubgraphDataset):
         class_mapping=None,
         prompt_feat=None,
         to_undirected=False,
-        trim_class_func=None,
+        process_label_func=None,
         adj=None,
         **kwargs,
     ):
@@ -236,7 +236,7 @@ class SubgraphHierDataset(SubgraphDataset):
             hop,
             class_mapping,
             to_undirected,
-            trim_class_func,
+            process_label_func,
             adj,
             **kwargs,
         )
@@ -304,7 +304,7 @@ class SubgraphLinkHierDataset(SubgraphHierDataset):
         class_mapping=None,
         prompt_feat=None,
         to_undirected=False,
-        trim_class_func=None,
+        process_label_func=None,
         adj=None,
         **kwargs,
     ):
@@ -316,7 +316,7 @@ class SubgraphLinkHierDataset(SubgraphHierDataset):
             class_mapping,
             prompt_feat,
             to_undirected,
-            trim_class_func,
+            process_label_func,
             adj,
             **kwargs,
         )
@@ -365,7 +365,7 @@ class SubgraphLinkHierDataset(SubgraphHierDataset):
                 torch.tensor(col, dtype=torch.long),
             ]
         )
-        label, binary_rep = self.trim_class(label)
+        label, embs, binary_rep = self.process_label(label)
         return edge_index, neighbors, label, binary_rep, [0, 1]
 
 
@@ -380,7 +380,7 @@ class SubgraphKGHierDataset(SubgraphHierDataset):
         class_mapping=None,
         prompt_feat=None,
         to_undirected=False,
-        trim_class_func=None,
+        process_label_func=None,
         adj=None,
         **kwargs,
     ):
@@ -392,7 +392,7 @@ class SubgraphKGHierDataset(SubgraphHierDataset):
             class_mapping,
             prompt_feat,
             to_undirected,
-            trim_class_func,
+            process_label_func,
             adj,
             **kwargs,
         )
@@ -436,7 +436,7 @@ class SubgraphKGHierDataset(SubgraphHierDataset):
         edge_index = self.g.edge_index[:, edge_mask]
         edge_type = self.g.edge_types[edge_mask]
         edge_index = edge2idx[edge_index]
-        label, binary_rep = self.trim_class(label)
+        label, embs, binary_rep = self.process_label(label)
         return edge_index, neighbors, label, binary_rep, [0, 1], edge_type
 
     def make_feature_graph(self, index):
@@ -465,6 +465,876 @@ class SubgraphKGHierDataset(SubgraphHierDataset):
             label,
             binary_rep,
         )
+
+
+class GraphListDataset(GraphTextDataset):
+    def __init__(
+        self,
+        graphs,
+        class_embs,
+        prompt_edge_feat,
+        data_idx,
+        process_label_func=None,
+        single_prompt_edge=False,
+        **kwargs,
+    ):
+        super().__init__(graphs, process_label_func, **kwargs)
+        self.class_embs = class_embs
+        self.prompt_edge_feat = prompt_edge_feat
+        self.data_idx = data_idx
+        self.single_prompt_edge = single_prompt_edge
+
+    def __len__(self):
+        return len(self.data_idx)
+
+    def make_feature_graph(self, index):
+        g = self.g[self.data_idx[index]]
+        edge_index = g.edge_index
+        label = g.y
+        # label_emb = self.class_emb(label).view(1, -1)
+        feat = g.x_text_feat
+        next_nid = g.num_nodes
+        edge_feat = g.xe_text_feat
+        y_label, g_class_emb, trimmed_label = self.process_label(label)
+        return (
+            feat,
+            edge_feat,
+            edge_index,
+            next_nid,
+            g_class_emb,
+            y_label,
+            trimmed_label,
+        )
+
+    def make_prompted_graph(self, feature_graph):
+        (
+            feat,
+            edge_feat,
+            edge_index,
+            next_nid,
+            g_class_emb,
+            label,
+            trimmed_label,
+        ) = feature_graph
+        feat = torch.cat([feat, g_class_emb], dim=0)
+        virtual_edge = torch.stack(
+            [
+                torch.arange(next_nid, dtype=torch.long)
+                .repeat(1, len(g_class_emb))
+                .view(-1),
+                torch.arange(
+                    next_nid, next_nid + len(g_class_emb), dtype=torch.long
+                ).repeat_interleave(next_nid),
+            ],
+            dim=0,
+        )
+        # print(virtual_edge)
+        edge_index = torch.cat(
+            [
+                edge_index,
+                virtual_edge,
+                # virtual_edge[[1, 0]],
+            ],
+            dim=-1,
+        )
+        edge_type = torch.cat(
+            [
+                torch.zeros(len(edge_feat), dtype=torch.long),
+                torch.zeros(len(virtual_edge[0]), dtype=torch.long) + 1,
+                # torch.zeros(len(virtual_edge[0]), dtype=torch.long) + 2,
+            ]
+        )
+        edge_emb = torch.cat(
+            [
+                edge_feat,
+                self.prompt_edge_feat[0].repeat(
+                    [(next_nid) * len(g_class_emb), 1]
+                ),
+            ]
+        )
+        prompted_graph = pyg.data.Data(
+            feat,
+            edge_index,
+            y=label,
+            edge_attr=edge_emb,
+            edge_type=edge_type,
+        )
+        # print(prompted_graph)
+        # print(edge_index)
+        return prompted_graph
+
+    def to_pyg(self, feature_graph, prompted_graph):
+        true_nodes_mask = torch.zeros(
+            prompted_graph.num_nodes, dtype=torch.bool
+        )
+        true_nodes_mask[
+            prompted_graph.num_nodes - len(feature_graph[-3]) :
+        ] = True
+        bin_labels = torch.zeros(prompted_graph.num_nodes, dtype=torch.float)
+        bin_labels[
+            prompted_graph.num_nodes - len(feature_graph[-3]) :
+        ] = feature_graph[-1]
+        # noi_node_mask = torch.zeros(prompted_graph.num_nodes, dtype=torch.bool)
+        # noi_node_mask[
+        #     prompted_graph.num_nodes - len(feature_graph[-3]) - 1
+        # ] = True
+        # prompted_graph.noi_node_mask = noi_node_mask
+        prompted_graph.bin_labels = bin_labels
+        target_node_mask = torch.zeros(
+            prompted_graph.num_nodes, dtype=torch.bool
+        )
+        target_node_mask[: feature_graph[-4]] = True
+        prompted_graph.target_node_mask = target_node_mask
+        prompted_graph.true_nodes_mask = true_nodes_mask
+        prompted_graph.sample_num_nodes = prompted_graph.num_nodes
+        prompted_graph.num_classes = len(feature_graph[-3])
+        return prompted_graph
+
+
+class GraphListNopromptDataset(GraphListDataset):
+    def make_prompted_graph(self, feature_graph):
+        (
+            feat,
+            edge_feat,
+            edge_index,
+            next_nid,
+            g_class_emb,
+            label,
+            trimmed_label,
+        ) = feature_graph
+        feat = torch.cat([feat, g_class_emb], dim=0)
+        edge_type = torch.zeros(len(edge_feat), dtype=torch.long)
+        prompted_graph = pyg.data.Data(
+            feat,
+            edge_index,
+            y=label,
+            edge_attr=edge_feat,
+            edge_type=edge_type,
+        )
+        # print(prompted_graph)
+        # print(edge_index)
+        return prompted_graph
+
+
+class GraphListHierDataset(GraphListDataset):
+    def __init__(
+        self,
+        graphs,
+        class_embs,
+        prompt_edge_feat,
+        prompt_text_feat,
+        data_idx,
+        process_label_func=None,
+        single_prompt_edge=False,
+        **kwargs,
+    ):
+        super().__init__(
+            graphs,
+            class_embs,
+            prompt_edge_feat,
+            data_idx,
+            process_label_func,
+            single_prompt_edge,
+            **kwargs,
+        )
+        self.prompt_text_feat = prompt_text_feat
+
+    def make_prompted_graph(self, feature_graph):
+        (
+            feat,
+            edge_feat,
+            edge_index,
+            next_nid,
+            g_class_emb,
+            label,
+            trimmed_label,
+        ) = feature_graph
+        feat = torch.cat([feat, self.prompt_text_feat[:1], g_class_emb], dim=0)
+        feature2prompt_edge = torch.tensor(
+            [list(range(next_nid)), [next_nid] * next_nid],
+            dtype=torch.long,
+        )
+        prompt2prompt_edge = torch.tensor(
+            [
+                [next_nid] * len(g_class_emb),
+                [next_nid + i + 1 for i in range(len(g_class_emb))],
+            ],
+            dtype=torch.long,
+        )
+        prompt_edges = [
+            feature2prompt_edge,
+            feature2prompt_edge[[1, 0]],
+            prompt2prompt_edge,
+        ]
+        prompt_edge_types = [
+            torch.zeros(
+                len(feature2prompt_edge[0]),
+                dtype=torch.long,
+            )
+            + 1,
+            torch.zeros(len(feature2prompt_edge[0]), dtype=torch.long) + 2,
+            torch.zeros(len(prompt2prompt_edge[0]), dtype=torch.long) + 3,
+        ]
+        prompt_feat_multiple = 1
+        if not self.single_prompt_edge:
+            prompt_edges += [prompt2prompt_edge[[1, 0]]]
+            prompt_edge_types += [
+                torch.zeros(len(prompt2prompt_edge[0]), dtype=torch.long) + 4
+            ]
+            prompt_feat_multiple = 2
+        edge_index = torch.cat([edge_index] + prompt_edges, dim=-1)
+        edge_type = torch.cat(
+            [torch.zeros(len(edge_feat), dtype=torch.long)] + prompt_edge_types
+        )
+        edge_feat = torch.cat(
+            [
+                edge_feat,
+                self.prompt_edge_feat[0].repeat(
+                    [
+                        2 * len(feature2prompt_edge[0])
+                        + len(prompt2prompt_edge[0]) * prompt_feat_multiple,
+                        1,
+                    ]
+                ),
+            ]
+        )
+        prompted_graph = pyg.data.Data(
+            feat,
+            edge_index,
+            y=label,
+            edge_attr=edge_feat,
+            edge_type=edge_type,
+        )
+        return prompted_graph
+
+
+class GraphListHierFSDataset(GraphListDataset):
+    def __init__(
+        self,
+        graphs,
+        class_embs,
+        prompt_edge_feat,
+        prompt_text_feat,
+        data_idx,
+        process_label_func=None,
+        single_prompt_edge=False,
+        class_ind=None,
+        max_sample=10,
+        shot=None,
+        reuse=False,
+        use_class_emb=False,
+        target_class=None,
+        **kwargs,
+    ):
+        super().__init__(
+            graphs,
+            class_embs,
+            prompt_edge_feat,
+            data_idx,
+            process_label_func,
+            single_prompt_edge,
+            **kwargs,
+        )
+        self.prompt_text_feat = prompt_text_feat
+        self.class_ind = class_ind
+        self.max_sample = max_sample
+        self.num_classes = self.class_ind.size()[1]
+        self.shot = shot
+        self.reuse = reuse
+        self.true_can = [
+            (can == 1).nonzero(as_tuple=True)[0] for can in self.class_ind.T
+        ]
+        self.false_can = [
+            (can == 0).nonzero(as_tuple=True)[0] for can in self.class_ind.T
+        ]
+        self.use_class_emb = use_class_emb
+        self.target_class = target_class
+
+    def make_feature_graph(self, index):
+        if self.target_class is not None:
+            class_ind = self.target_class[
+                torch.randint(0, len(self.target_class), (1,))
+            ]
+        else:
+            class_ind = torch.randint(0, self.num_classes, (1,))
+        if self.shot is None:
+            while (
+                len(self.true_can[class_ind]) <= 1
+                or len(self.false_can[class_ind]) <= 1
+            ):
+                class_ind = torch.randint(0, self.num_classes, (1,))
+            c_max_sample = min(
+                len(self.true_can[class_ind]), len((self.false_can[class_ind]))
+            )
+            num_sample = torch.randint(
+                2, min(c_max_sample, self.max_sample) + 1, (1,)
+            )
+        else:
+            while (
+                len(self.true_can[class_ind]) <= self.shot
+                or len(self.false_can[class_ind]) <= self.shot
+            ):
+                class_ind = torch.randint(0, self.num_classes, (1,))
+            num_sample = self.shot + 1
+        # print(num_sample)
+        true_can = self.true_can[class_ind][
+            torch.randperm(len(self.true_can[class_ind]))[:num_sample]
+        ]
+        # print(true_can)
+        false_can = self.false_can[class_ind][
+            torch.randperm(len(self.false_can[class_ind]))[:num_sample]
+        ]
+        true_feature_graph = [
+            super(GraphListHierFSDataset, self).make_feature_graph(can)
+            for can in true_can
+        ]
+        false_feature_graph = [
+            super(GraphListHierFSDataset, self).make_feature_graph(can)
+            for can in false_can
+        ]
+        return (
+            true_feature_graph,
+            false_feature_graph,
+            self.class_embs[class_ind],
+        )
+
+    def self_sample_edge_index(self, init_ind, size):
+        prompt_init_ind = init_ind + size * 2
+        self_edges = torch.stack(
+            [
+                torch.arange(init_ind, prompt_init_ind),
+                torch.arange(prompt_init_ind, prompt_init_ind + size * 2),
+            ],
+            dim=0,
+        )
+        fs_edges = []
+        for i in range(size):
+            fs_edges.append(
+                torch.stack(
+                    [
+                        i
+                        + init_ind
+                        + torch.zeros(2 * size - 2, dtype=torch.long),
+                        torch.cat(
+                            [
+                                torch.arange(
+                                    prompt_init_ind,
+                                    i + prompt_init_ind,
+                                    dtype=torch.long,
+                                ),
+                                torch.arange(
+                                    i + prompt_init_ind + 1,
+                                    prompt_init_ind + size,
+                                    dtype=torch.long,
+                                ),
+                                torch.arange(
+                                    prompt_init_ind + size,
+                                    prompt_init_ind + size + i,
+                                    dtype=torch.long,
+                                ),
+                                torch.arange(
+                                    prompt_init_ind + size + i + 1,
+                                    prompt_init_ind + 2 * size,
+                                    dtype=torch.long,
+                                ),
+                            ]
+                        ),
+                    ],
+                    dim=0,
+                )
+            )
+        fs_edges = torch.cat(fs_edges, dim=-1)
+        return self_edges, fs_edges
+
+    def make_prompted_graph(self, feature_graph):
+        if self.reuse:
+            return self.make_prompted_graph_reuse(feature_graph)
+        else:
+            return self.make_prompted_graph_simple(feature_graph)
+
+    def make_prompted_graph_simple(self, feature_graph):
+        (true_feature_graph, false_feature_graph, class_emb) = feature_graph
+        if torch.rand(1)[0] < 0.5:
+            target_graph = true_feature_graph[0]
+            sample_label = torch.tensor([[1]])
+        else:
+            target_graph = false_feature_graph[0]
+            sample_label = torch.tensor([[0]])
+
+        all_graphs = [target_graph] + true_feature_graph[1:]
+        num_nodes = torch.tensor(
+            [len(g[0]) for g in all_graphs], dtype=torch.long
+        )
+        total_num_nodes = num_nodes.sum()
+        feat = torch.cat(
+            [g[0] for g in all_graphs]
+            + [
+                self.prompt_text_feat[:1].repeat(len(all_graphs), 1),
+                # class_emb,
+                class_emb
+                if self.use_class_emb
+                else self.prompt_text_feat[1:2].repeat(len(class_emb), 1),
+            ],
+            dim=0,
+        )
+
+        feature_nodes_indices = torch.arange(total_num_nodes, dtype=torch.long)
+        prompt_nodes_indices = torch.arange(
+            total_num_nodes,
+            total_num_nodes + len(all_graphs),
+            dtype=torch.long,
+        ).repeat_interleave(num_nodes)
+
+        feature2prompt_edge = torch.stack(
+            [feature_nodes_indices, prompt_nodes_indices], dim=0
+        )
+        valid_label_ind = total_num_nodes + len(all_graphs)
+        query_prompt_edge = torch.stack(
+            [
+                torch.zeros(1, dtype=torch.long) + total_num_nodes,
+                torch.arange(
+                    total_num_nodes + len(all_graphs),
+                    total_num_nodes + len(all_graphs) + 1,
+                    dtype=torch.long,
+                ),
+            ],
+            dim=0,
+        )
+        support_prompt_edge = torch.stack(
+            [
+                torch.arange(
+                    total_num_nodes + 1,
+                    total_num_nodes + len(all_graphs),
+                    dtype=torch.long,
+                ),
+                valid_label_ind.repeat_interleave(len(all_graphs) - 1),
+            ],
+            dim=0,
+        )
+
+        prompt2prompt_edge = torch.cat(
+            [query_prompt_edge, support_prompt_edge],
+            dim=-1,
+        )
+        prompt_edges = [
+            feature2prompt_edge,
+            feature2prompt_edge[[1, 0]],
+            prompt2prompt_edge,
+        ]
+        prompt_edge_types = [
+            torch.zeros(
+                len(feature2prompt_edge[0]),
+                dtype=torch.long,
+            )
+            + 1,
+            torch.zeros(len(feature2prompt_edge[0]), dtype=torch.long) + 2,
+            torch.zeros(len(query_prompt_edge[0]), dtype=torch.long) + 3,
+            torch.zeros(len(support_prompt_edge[0]), dtype=torch.long) + 4,
+        ]
+        prompt_feat_multiple = 1
+        if not self.single_prompt_edge:
+            prompt_edges += [prompt2prompt_edge[[1, 0]]]
+            prompt_edge_types += [
+                torch.zeros(len(prompt2prompt_edge[0]), dtype=torch.long) + 4
+            ]
+            prompt_feat_multiple = 2
+        edge_feat = torch.cat([g[1] for g in all_graphs], dim=0)
+        edge_index = torch.cat([g[2] for g in all_graphs], dim=-1)
+        edge_index = torch.cat([edge_index] + prompt_edges, dim=-1)
+        edge_type = torch.cat(
+            [torch.zeros(len(edge_feat), dtype=torch.long)] + prompt_edge_types
+        )
+        edge_feat = torch.cat(
+            [
+                edge_feat,
+                self.prompt_edge_feat[0].repeat(
+                    [
+                        2 * len(feature2prompt_edge[0]),
+                        1,
+                    ]
+                ),
+                self.prompt_edge_feat[1].repeat(
+                    [
+                        len(query_prompt_edge[0]),
+                        1,
+                    ]
+                ),
+                self.prompt_edge_feat[2].repeat(
+                    [
+                        len(support_prompt_edge[0]),
+                        1,
+                    ]
+                ),
+            ]
+        )
+        prompted_graph = pyg.data.Data(
+            feat,
+            edge_index,
+            y=sample_label,
+            edge_attr=edge_feat,
+            edge_type=edge_type,
+        )
+        return prompted_graph
+
+    def make_prompted_graph_reuse(self, feature_graph):
+        (true_feature_graph, false_feature_graph, class_emb) = feature_graph
+        num_sample = len(false_feature_graph)
+        all_graphs = true_feature_graph + false_feature_graph
+        num_nodes = torch.tensor(
+            [len(g[0]) for g in all_graphs], dtype=torch.long
+        )
+        total_num_nodes = num_nodes.sum()
+        # print(self.prompt_text_feat)
+        feat = torch.cat(
+            [g[0] for g in all_graphs]
+            + [
+                self.prompt_text_feat.repeat(len(all_graphs), 1),
+                class_emb.repeat(len(all_graphs), 1),
+            ],
+            dim=0,
+        )
+        feature_nodes_indices = torch.arange(total_num_nodes, dtype=torch.long)
+        prompt_nodes_indices = torch.arange(
+            total_num_nodes,
+            total_num_nodes + len(all_graphs),
+            dtype=torch.long,
+        ).repeat_interleave(num_nodes)
+        feature2prompt_edge = torch.stack(
+            [feature_nodes_indices, prompt_nodes_indices], dim=0
+        )
+        (
+            self_prompt2prompt_edge,
+            fs_prompt2prompt_edge,
+        ) = self.self_sample_edge_index(total_num_nodes, num_sample)
+        prompt2prompt_edge = torch.cat(
+            [self_prompt2prompt_edge, fs_prompt2prompt_edge],
+            dim=-1,
+        )
+        prompt_edges = [
+            feature2prompt_edge,
+            feature2prompt_edge[[1, 0]],
+            prompt2prompt_edge,
+        ]
+        prompt_edge_types = [
+            torch.zeros(
+                len(feature2prompt_edge[0]),
+                dtype=torch.long,
+            )
+            + 1,
+            torch.zeros(len(feature2prompt_edge[0]), dtype=torch.long) + 2,
+            torch.zeros(len(prompt2prompt_edge[0]), dtype=torch.long) + 3,
+        ]
+        prompt_feat_multiple = 1
+        if not self.single_prompt_edge:
+            prompt_edges += [prompt2prompt_edge[[1, 0]]]
+            prompt_edge_types += [
+                torch.zeros(len(prompt2prompt_edge[0]), dtype=torch.long) + 4
+            ]
+            prompt_feat_multiple = 2
+        edge_feat = torch.cat([g[1] for g in all_graphs], dim=0)
+        edge_index = torch.cat([g[2] for g in all_graphs], dim=-1)
+        edge_index = torch.cat([edge_index] + prompt_edges, dim=-1)
+        edge_type = torch.cat(
+            [torch.zeros(len(edge_feat), dtype=torch.long)] + prompt_edge_types
+        )
+        edge_feat = torch.cat(
+            [
+                edge_feat,
+                self.prompt_edge_feat[0].repeat(
+                    [
+                        2 * len(feature2prompt_edge[0]),
+                        1,
+                    ]
+                ),
+                self.prompt_edge_feat[1].repeat(
+                    [
+                        len(self_prompt2prompt_edge[0]),
+                        1,
+                    ]
+                ),
+                self.prompt_edge_feat[2].repeat(
+                    [
+                        len(fs_prompt2prompt_edge[0]),
+                        1,
+                    ]
+                ),
+            ]
+        )
+        prompted_graph = pyg.data.Data(
+            feat,
+            edge_index,
+            y=torch.cat([g[-2] for g in all_graphs], dim=0),
+            edge_attr=edge_feat,
+            edge_type=edge_type,
+        )
+        return prompted_graph
+
+    def to_pyg(self, feature_graph, prompted_graph):
+        if self.reuse:
+            return self.to_pyg_reuse(feature_graph, prompted_graph)
+        else:
+            return self.to_pyg_simple(feature_graph, prompted_graph)
+
+    def to_pyg_reuse(self, feature_graph, prompted_graph):
+        true_nodes_mask = torch.zeros(
+            prompted_graph.num_nodes, dtype=torch.bool
+        )
+        true_nodes_mask[
+            prompted_graph.num_nodes - len(feature_graph[1]) * 2 :
+        ] = True
+        bin_labels = torch.zeros(prompted_graph.num_nodes, dtype=torch.float)
+        bin_labels[
+            prompted_graph.num_nodes
+            - len(feature_graph[1]) * 2 : prompted_graph.num_nodes
+            - len(feature_graph[1])
+        ] = 1
+        # bin_labels[prompted_graph.num_nodes - len(feature_graph[1]) :] = 0
+        prompted_graph.bin_labels = bin_labels
+        target_node_mask = torch.zeros(
+            prompted_graph.num_nodes, dtype=torch.bool
+        )
+        # target_node_mask[feature_graph[0][-4]] = True
+        prompted_graph.target_node_mask = target_node_mask
+        prompted_graph.true_nodes_mask = true_nodes_mask
+        prompted_graph.sample_num_nodes = prompted_graph.num_nodes
+        prompted_graph.num_classes = 1
+        return prompted_graph
+
+    def to_pyg_simple(self, feature_graph, prompted_graph):
+        true_nodes_mask = torch.zeros(
+            prompted_graph.num_nodes, dtype=torch.bool
+        )
+        true_nodes_mask[prompted_graph.num_nodes - 1 :] = True
+        bin_labels = torch.zeros(prompted_graph.num_nodes, dtype=torch.float)
+        bin_labels[prompted_graph.num_nodes - 1 :] = prompted_graph.y
+        # bin_labels[prompted_graph.num_nodes - len(feature_graph[1]) :] = 0
+        prompted_graph.bin_labels = bin_labels
+        target_node_mask = torch.zeros(
+            prompted_graph.num_nodes, dtype=torch.bool
+        )
+        # target_node_mask[feature_graph[0][-4]] = True
+        prompted_graph.target_node_mask = target_node_mask
+        prompted_graph.true_nodes_mask = true_nodes_mask
+        prompted_graph.sample_num_nodes = prompted_graph.num_nodes
+        prompted_graph.num_classes = 1
+        return prompted_graph
+
+
+class GraphListHierFixDataset(GraphListDataset):
+    def __init__(
+        self,
+        graphs,
+        class_embs,
+        prompt_edge_feat,
+        prompt_text_feat,
+        data_idx,
+        process_label_func=None,
+        single_prompt_edge=False,
+        class_ind=None,
+        shot=10,
+        use_class_emb=False,
+        **kwargs,
+    ):
+        super().__init__(
+            graphs,
+            class_embs,
+            prompt_edge_feat,
+            data_idx,
+            process_label_func,
+            single_prompt_edge,
+            **kwargs,
+        )
+        self.prompt_text_feat = prompt_text_feat
+        self.class_ind = class_ind
+        self.shot = shot
+        self.num_classes = self.class_ind.size()[1]
+        self.true_can = [
+            (can == 1).nonzero(as_tuple=True)[0] for can in self.class_ind.T
+        ]
+        self.false_can = [
+            (can == 0).nonzero(as_tuple=True)[0] for can in self.class_ind.T
+        ]
+        self.use_class_emb = use_class_emb
+
+    def make_feature_graph(self, index):
+        query_graph = super(GraphListHierFixDataset, self).make_feature_graph(
+            index
+        )
+        # print(true_can)
+        label = query_graph[-1]
+        support_graph = []
+        valid_labels = []
+        for i, label_val in enumerate(label.view(-1)):
+            # print(i)
+            if label_val == label_val:
+                true_can = self.true_can[i]
+                if len(true_can) < self.shot:
+                    support_graph.append([])
+                    label_val = float("nan")
+                else:
+                    support_g = true_can[
+                        torch.randperm(len(true_can))[: self.shot]
+                    ]
+                    support_graph.append(
+                        [
+                            super(
+                                GraphListHierFixDataset, self
+                            ).make_feature_graph(g_ind)
+                            for g_ind in support_g
+                        ]
+                    )
+            valid_labels.append(label_val)
+        true_label = torch.tensor(valid_labels, dtype=torch.float).view(1, -1)
+        return (
+            query_graph,
+            support_graph,
+            query_graph[-3],
+            true_label,
+        )
+
+    def make_prompted_graph(self, feature_graph):
+        (query_graph, support_graph, class_emb, true_label) = feature_graph
+        all_graphs = [query_graph]
+        for sg in support_graph:
+            all_graphs += sg
+        num_nodes = torch.tensor(
+            [len(g[0]) for g in all_graphs], dtype=torch.long
+        )
+        total_num_nodes = num_nodes.sum()
+        feat = torch.cat(
+            [g[0] for g in all_graphs]
+            + [
+                self.prompt_text_feat[:1].repeat(len(all_graphs), 1),
+                class_emb
+                if self.use_class_emb
+                else self.prompt_text_feat[1:2].repeat(len(class_emb), 1),
+            ],
+            dim=0,
+        )
+        feature_nodes_indices = torch.arange(total_num_nodes, dtype=torch.long)
+        prompt_nodes_indices = torch.arange(
+            total_num_nodes,
+            total_num_nodes + len(all_graphs),
+            dtype=torch.long,
+        ).repeat_interleave(num_nodes)
+
+        feature2prompt_edge = torch.stack(
+            [feature_nodes_indices, prompt_nodes_indices], dim=0
+        )
+        valid_label_ind = (
+            (true_label == true_label).nonzero(as_tuple=True)[1]
+            + total_num_nodes
+            + len(all_graphs)
+        )
+        query_prompt_edge = torch.stack(
+            [
+                torch.zeros(len(class_emb), dtype=torch.long)
+                + total_num_nodes,
+                torch.arange(
+                    total_num_nodes + len(all_graphs),
+                    total_num_nodes + len(all_graphs) + len(class_emb),
+                    dtype=torch.long,
+                ),
+            ],
+            dim=0,
+        )
+        support_prompt_edge = torch.stack(
+            [
+                torch.arange(
+                    total_num_nodes + 1,
+                    total_num_nodes + len(all_graphs),
+                    dtype=torch.long,
+                ),
+                valid_label_ind.repeat_interleave(self.shot),
+            ],
+            dim=0,
+        )
+
+        prompt2prompt_edge = torch.cat(
+            [query_prompt_edge, support_prompt_edge],
+            dim=-1,
+        )
+        prompt_edges = [
+            feature2prompt_edge,
+            feature2prompt_edge[[1, 0]],
+            prompt2prompt_edge,
+        ]
+        prompt_edge_types = [
+            torch.zeros(
+                len(feature2prompt_edge[0]),
+                dtype=torch.long,
+            )
+            + 1,
+            torch.zeros(len(feature2prompt_edge[0]), dtype=torch.long) + 2,
+            torch.zeros(len(query_prompt_edge[0]), dtype=torch.long) + 3,
+            torch.zeros(len(support_prompt_edge[0]), dtype=torch.long) + 3,
+        ]
+        prompt_feat_multiple = 1
+        if not self.single_prompt_edge:
+            prompt_edges += [prompt2prompt_edge[[1, 0]]]
+            prompt_edge_types += [
+                torch.zeros(len(prompt2prompt_edge[0]), dtype=torch.long) + 4
+            ]
+            prompt_feat_multiple = 2
+        edge_feat = torch.cat([g[1] for g in all_graphs], dim=0)
+        edge_index = torch.cat([g[2] for g in all_graphs], dim=-1)
+        edge_index = torch.cat([edge_index] + prompt_edges, dim=-1)
+        edge_type = torch.cat(
+            [torch.zeros(len(edge_feat), dtype=torch.long)] + prompt_edge_types
+        )
+        edge_feat = torch.cat(
+            [
+                edge_feat,
+                self.prompt_edge_feat[0].repeat(
+                    [
+                        2 * len(feature2prompt_edge[0]),
+                        1,
+                    ]
+                ),
+                self.prompt_edge_feat[1].repeat(
+                    [
+                        len(query_prompt_edge[0]),
+                        1,
+                    ]
+                ),
+                self.prompt_edge_feat[2].repeat(
+                    [
+                        len(support_prompt_edge[0]),
+                        1,
+                    ]
+                ),
+            ]
+        )
+        prompted_graph = pyg.data.Data(
+            feat,
+            edge_index,
+            y=torch.cat([g[-2] for g in all_graphs], dim=0),
+            edge_attr=edge_feat,
+            edge_type=edge_type,
+        )
+        return prompted_graph
+
+    def to_pyg(self, feature_graph, prompted_graph):
+        true_nodes_mask = torch.zeros(
+            prompted_graph.num_nodes, dtype=torch.bool
+        )
+        true_nodes_mask[
+            prompted_graph.num_nodes - len(feature_graph[-2]) :
+        ] = True
+        bin_labels = torch.zeros(prompted_graph.num_nodes, dtype=torch.float)
+        bin_labels[
+            prompted_graph.num_nodes - len(feature_graph[-2]) :
+        ] = feature_graph[-1]
+        prompted_graph.bin_labels = bin_labels
+        target_node_mask = torch.zeros(
+            prompted_graph.num_nodes, dtype=torch.bool
+        )
+        # target_node_mask[feature_graph[0][-4]] = True
+        prompted_graph.target_node_mask = target_node_mask
+        prompted_graph.true_nodes_mask = true_nodes_mask
+        prompted_graph.sample_num_nodes = prompted_graph.num_nodes
+        prompted_graph.num_classes = len(feature_graph[-2])
+        return prompted_graph
 
 
 class FewShotSubgraphDataset(SubgraphDataset):
@@ -2083,888 +2953,6 @@ class ZeroShotKGDataset(FewShotKGHierDataset):
         new_subg.sample_num_nodes = new_subg.num_nodes
         new_subg.num_classes = self.n_way
         return new_subg
-
-
-class GraphListDataset(GraphTextDataset):
-    def __init__(
-        self,
-        graphs,
-        class_embs,
-        prompt_edge_feat,
-        data_idx,
-        trim_class_func=None,
-        single_prompt_edge=False,
-        **kwargs,
-    ):
-        super().__init__(graphs, **kwargs)
-        self.class_embs = class_embs
-        self.prompt_edge_feat = prompt_edge_feat
-        self.data_idx = data_idx
-        self.trim_class_func = trim_class_func
-        self.single_prompt_edge = single_prompt_edge
-
-    def __len__(self):
-        return len(self.data_idx)
-
-    def trim_class(self, label):
-        if self.trim_class_func is None:
-            return label, self.class_embs, label
-        else:
-            return self.trim_class_func(self.class_embs, label)
-
-    def make_feature_graph(self, index):
-        g = self.g[self.data_idx[index]]
-        edge_index = g.edge_index
-        label = g.y
-        # label_emb = self.class_emb(label).view(1, -1)
-        feat = g.x_text_feat
-        next_nid = g.num_nodes
-        edge_feat = g.xe_text_feat
-        y_label, g_class_emb, trimmed_label = self.trim_class(label)
-        return (
-            feat,
-            edge_feat,
-            edge_index,
-            next_nid,
-            g_class_emb,
-            y_label,
-            trimmed_label,
-        )
-
-    def make_prompted_graph(self, feature_graph):
-        (
-            feat,
-            edge_feat,
-            edge_index,
-            next_nid,
-            g_class_emb,
-            label,
-            trimmed_label,
-        ) = feature_graph
-        feat = torch.cat([feat, g_class_emb], dim=0)
-        virtual_edge = torch.stack(
-            [
-                torch.arange(next_nid, dtype=torch.long)
-                .repeat(1, len(g_class_emb))
-                .view(-1),
-                torch.arange(
-                    next_nid, next_nid + len(g_class_emb), dtype=torch.long
-                ).repeat_interleave(next_nid),
-            ],
-            dim=0,
-        )
-        # print(virtual_edge)
-        edge_index = torch.cat(
-            [
-                edge_index,
-                virtual_edge,
-                # virtual_edge[[1, 0]],
-            ],
-            dim=-1,
-        )
-        edge_type = torch.cat(
-            [
-                torch.zeros(len(edge_feat), dtype=torch.long),
-                torch.zeros(len(virtual_edge[0]), dtype=torch.long) + 1,
-                # torch.zeros(len(virtual_edge[0]), dtype=torch.long) + 2,
-            ]
-        )
-        edge_emb = torch.cat(
-            [
-                edge_feat,
-                self.prompt_edge_feat[0].repeat(
-                    [(next_nid) * len(g_class_emb), 1]
-                ),
-            ]
-        )
-        prompted_graph = pyg.data.Data(
-            feat,
-            edge_index,
-            y=label,
-            edge_attr=edge_emb,
-            edge_type=edge_type,
-        )
-        # print(prompted_graph)
-        # print(edge_index)
-        return prompted_graph
-
-    def to_pyg(self, feature_graph, prompted_graph):
-        true_nodes_mask = torch.zeros(
-            prompted_graph.num_nodes, dtype=torch.bool
-        )
-        true_nodes_mask[
-            prompted_graph.num_nodes - len(feature_graph[-3]) :
-        ] = True
-        bin_labels = torch.zeros(prompted_graph.num_nodes, dtype=torch.float)
-        bin_labels[
-            prompted_graph.num_nodes - len(feature_graph[-3]) :
-        ] = feature_graph[-1]
-        # noi_node_mask = torch.zeros(prompted_graph.num_nodes, dtype=torch.bool)
-        # noi_node_mask[
-        #     prompted_graph.num_nodes - len(feature_graph[-3]) - 1
-        # ] = True
-        # prompted_graph.noi_node_mask = noi_node_mask
-        # if self.trim_class_func is None:
-        prompted_graph.bin_labels = bin_labels
-        target_node_mask = torch.zeros(
-            prompted_graph.num_nodes, dtype=torch.bool
-        )
-        target_node_mask[: feature_graph[-4]] = True
-        prompted_graph.target_node_mask = target_node_mask
-        prompted_graph.true_nodes_mask = true_nodes_mask
-        prompted_graph.sample_num_nodes = prompted_graph.num_nodes
-        prompted_graph.num_classes = len(feature_graph[-3])
-        return prompted_graph
-
-
-class GraphListNopromptDataset(GraphListDataset):
-    def make_prompted_graph(self, feature_graph):
-        (
-            feat,
-            edge_feat,
-            edge_index,
-            next_nid,
-            g_class_emb,
-            label,
-            trimmed_label,
-        ) = feature_graph
-        feat = torch.cat([feat, g_class_emb], dim=0)
-        edge_type = torch.zeros(len(edge_feat), dtype=torch.long)
-        prompted_graph = pyg.data.Data(
-            feat,
-            edge_index,
-            y=label,
-            edge_attr=edge_feat,
-            edge_type=edge_type,
-        )
-        # print(prompted_graph)
-        # print(edge_index)
-        return prompted_graph
-
-
-class GraphListHierDataset(GraphListDataset):
-    def __init__(
-        self,
-        graphs,
-        class_embs,
-        prompt_edge_feat,
-        prompt_text_feat,
-        data_idx,
-        trim_class_func=None,
-        single_prompt_edge=False,
-        **kwargs,
-    ):
-        super().__init__(
-            graphs,
-            class_embs,
-            prompt_edge_feat,
-            data_idx,
-            trim_class_func,
-            single_prompt_edge,
-            **kwargs,
-        )
-        self.prompt_text_feat = prompt_text_feat
-
-    def make_prompted_graph(self, feature_graph):
-        (
-            feat,
-            edge_feat,
-            edge_index,
-            next_nid,
-            g_class_emb,
-            label,
-            trimmed_label,
-        ) = feature_graph
-        feat = torch.cat([feat, self.prompt_text_feat[:1], g_class_emb], dim=0)
-        feature2prompt_edge = torch.tensor(
-            [list(range(next_nid)), [next_nid] * next_nid],
-            dtype=torch.long,
-        )
-        prompt2prompt_edge = torch.tensor(
-            [
-                [next_nid] * len(g_class_emb),
-                [next_nid + i + 1 for i in range(len(g_class_emb))],
-            ],
-            dtype=torch.long,
-        )
-        prompt_edges = [
-            feature2prompt_edge,
-            feature2prompt_edge[[1, 0]],
-            prompt2prompt_edge,
-        ]
-        prompt_edge_types = [
-            torch.zeros(
-                len(feature2prompt_edge[0]),
-                dtype=torch.long,
-            )
-            + 1,
-            torch.zeros(len(feature2prompt_edge[0]), dtype=torch.long) + 2,
-            torch.zeros(len(prompt2prompt_edge[0]), dtype=torch.long) + 3,
-        ]
-        prompt_feat_multiple = 1
-        if not self.single_prompt_edge:
-            prompt_edges += [prompt2prompt_edge[[1, 0]]]
-            prompt_edge_types += [
-                torch.zeros(len(prompt2prompt_edge[0]), dtype=torch.long) + 4
-            ]
-            prompt_feat_multiple = 2
-        edge_index = torch.cat([edge_index] + prompt_edges, dim=-1)
-        edge_type = torch.cat(
-            [torch.zeros(len(edge_feat), dtype=torch.long)] + prompt_edge_types
-        )
-        edge_feat = torch.cat(
-            [
-                edge_feat,
-                self.prompt_edge_feat[0].repeat(
-                    [
-                        2 * len(feature2prompt_edge[0])
-                        + len(prompt2prompt_edge[0]) * prompt_feat_multiple,
-                        1,
-                    ]
-                ),
-            ]
-        )
-        prompted_graph = pyg.data.Data(
-            feat,
-            edge_index,
-            y=label,
-            edge_attr=edge_feat,
-            edge_type=edge_type,
-        )
-        return prompted_graph
-
-
-class GraphListHierFSDataset(GraphListDataset):
-    def __init__(
-        self,
-        graphs,
-        class_embs,
-        prompt_edge_feat,
-        prompt_text_feat,
-        data_idx,
-        trim_class_func=None,
-        single_prompt_edge=False,
-        class_ind=None,
-        max_sample=10,
-        shot=None,
-        reuse=False,
-        use_class_emb=False,
-        target_class=None,
-        **kwargs,
-    ):
-        super().__init__(
-            graphs,
-            class_embs,
-            prompt_edge_feat,
-            data_idx,
-            trim_class_func,
-            single_prompt_edge,
-            **kwargs,
-        )
-        self.prompt_text_feat = prompt_text_feat
-        self.class_ind = class_ind
-        self.max_sample = max_sample
-        self.num_classes = self.class_ind.size()[1]
-        self.shot = shot
-        self.reuse = reuse
-        self.true_can = [
-            (can == 1).nonzero(as_tuple=True)[0] for can in self.class_ind.T
-        ]
-        self.false_can = [
-            (can == 0).nonzero(as_tuple=True)[0] for can in self.class_ind.T
-        ]
-        self.use_class_emb = use_class_emb
-        self.target_class = target_class
-
-    def make_feature_graph(self, index):
-        if self.target_class is not None:
-            class_ind = self.target_class[
-                torch.randint(0, len(self.target_class), (1,))
-            ]
-        else:
-            class_ind = torch.randint(0, self.num_classes, (1,))
-        if self.shot is None:
-            while (
-                len(self.true_can[class_ind]) <= 1
-                or len(self.false_can[class_ind]) <= 1
-            ):
-                class_ind = torch.randint(0, self.num_classes, (1,))
-            c_max_sample = min(
-                len(self.true_can[class_ind]), len((self.false_can[class_ind]))
-            )
-            num_sample = torch.randint(
-                2, min(c_max_sample, self.max_sample) + 1, (1,)
-            )
-        else:
-            while (
-                len(self.true_can[class_ind]) <= self.shot
-                or len(self.false_can[class_ind]) <= self.shot
-            ):
-                class_ind = torch.randint(0, self.num_classes, (1,))
-            num_sample = self.shot + 1
-        # print(num_sample)
-        true_can = self.true_can[class_ind][
-            torch.randperm(len(self.true_can[class_ind]))[:num_sample]
-        ]
-        # print(true_can)
-        false_can = self.false_can[class_ind][
-            torch.randperm(len(self.false_can[class_ind]))[:num_sample]
-        ]
-        true_feature_graph = [
-            super(GraphListHierFSDataset, self).make_feature_graph(can)
-            for can in true_can
-        ]
-        false_feature_graph = [
-            super(GraphListHierFSDataset, self).make_feature_graph(can)
-            for can in false_can
-        ]
-        return (
-            true_feature_graph,
-            false_feature_graph,
-            self.class_embs[class_ind],
-        )
-
-    def self_sample_edge_index(self, init_ind, size):
-        prompt_init_ind = init_ind + size * 2
-        self_edges = torch.stack(
-            [
-                torch.arange(init_ind, prompt_init_ind),
-                torch.arange(prompt_init_ind, prompt_init_ind + size * 2),
-            ],
-            dim=0,
-        )
-        fs_edges = []
-        for i in range(size):
-            fs_edges.append(
-                torch.stack(
-                    [
-                        i
-                        + init_ind
-                        + torch.zeros(2 * size - 2, dtype=torch.long),
-                        torch.cat(
-                            [
-                                torch.arange(
-                                    prompt_init_ind,
-                                    i + prompt_init_ind,
-                                    dtype=torch.long,
-                                ),
-                                torch.arange(
-                                    i + prompt_init_ind + 1,
-                                    prompt_init_ind + size,
-                                    dtype=torch.long,
-                                ),
-                                torch.arange(
-                                    prompt_init_ind + size,
-                                    prompt_init_ind + size + i,
-                                    dtype=torch.long,
-                                ),
-                                torch.arange(
-                                    prompt_init_ind + size + i + 1,
-                                    prompt_init_ind + 2 * size,
-                                    dtype=torch.long,
-                                ),
-                            ]
-                        ),
-                    ],
-                    dim=0,
-                )
-            )
-        fs_edges = torch.cat(fs_edges, dim=-1)
-        return self_edges, fs_edges
-
-    def make_prompted_graph(self, feature_graph):
-        if self.reuse:
-            return self.make_prompted_graph_reuse(feature_graph)
-        else:
-            return self.make_prompted_graph_simple(feature_graph)
-
-    def make_prompted_graph_simple(self, feature_graph):
-        (true_feature_graph, false_feature_graph, class_emb) = feature_graph
-        if torch.rand(1)[0] < 0.5:
-            target_graph = true_feature_graph[0]
-            sample_label = torch.tensor([[1]])
-        else:
-            target_graph = false_feature_graph[0]
-            sample_label = torch.tensor([[0]])
-
-        all_graphs = [target_graph] + true_feature_graph[1:]
-        num_nodes = torch.tensor(
-            [len(g[0]) for g in all_graphs], dtype=torch.long
-        )
-        total_num_nodes = num_nodes.sum()
-        feat = torch.cat(
-            [g[0] for g in all_graphs]
-            + [
-                self.prompt_text_feat[:1].repeat(len(all_graphs), 1),
-                # class_emb,
-                class_emb
-                if self.use_class_emb
-                else self.prompt_text_feat[1:2].repeat(len(class_emb), 1),
-            ],
-            dim=0,
-        )
-
-        feature_nodes_indices = torch.arange(total_num_nodes, dtype=torch.long)
-        prompt_nodes_indices = torch.arange(
-            total_num_nodes,
-            total_num_nodes + len(all_graphs),
-            dtype=torch.long,
-        ).repeat_interleave(num_nodes)
-
-        feature2prompt_edge = torch.stack(
-            [feature_nodes_indices, prompt_nodes_indices], dim=0
-        )
-        valid_label_ind = total_num_nodes + len(all_graphs)
-        query_prompt_edge = torch.stack(
-            [
-                torch.zeros(1, dtype=torch.long) + total_num_nodes,
-                torch.arange(
-                    total_num_nodes + len(all_graphs),
-                    total_num_nodes + len(all_graphs) + 1,
-                    dtype=torch.long,
-                ),
-            ],
-            dim=0,
-        )
-        support_prompt_edge = torch.stack(
-            [
-                torch.arange(
-                    total_num_nodes + 1,
-                    total_num_nodes + len(all_graphs),
-                    dtype=torch.long,
-                ),
-                valid_label_ind.repeat_interleave(len(all_graphs) - 1),
-            ],
-            dim=0,
-        )
-
-        prompt2prompt_edge = torch.cat(
-            [query_prompt_edge, support_prompt_edge],
-            dim=-1,
-        )
-        prompt_edges = [
-            feature2prompt_edge,
-            feature2prompt_edge[[1, 0]],
-            prompt2prompt_edge,
-        ]
-        prompt_edge_types = [
-            torch.zeros(
-                len(feature2prompt_edge[0]),
-                dtype=torch.long,
-            )
-            + 1,
-            torch.zeros(len(feature2prompt_edge[0]), dtype=torch.long) + 2,
-            torch.zeros(len(query_prompt_edge[0]), dtype=torch.long) + 3,
-            torch.zeros(len(support_prompt_edge[0]), dtype=torch.long) + 4,
-        ]
-        prompt_feat_multiple = 1
-        if not self.single_prompt_edge:
-            prompt_edges += [prompt2prompt_edge[[1, 0]]]
-            prompt_edge_types += [
-                torch.zeros(len(prompt2prompt_edge[0]), dtype=torch.long) + 4
-            ]
-            prompt_feat_multiple = 2
-        edge_feat = torch.cat([g[1] for g in all_graphs], dim=0)
-        edge_index = torch.cat([g[2] for g in all_graphs], dim=-1)
-        edge_index = torch.cat([edge_index] + prompt_edges, dim=-1)
-        edge_type = torch.cat(
-            [torch.zeros(len(edge_feat), dtype=torch.long)] + prompt_edge_types
-        )
-        edge_feat = torch.cat(
-            [
-                edge_feat,
-                self.prompt_edge_feat[0].repeat(
-                    [
-                        2 * len(feature2prompt_edge[0]),
-                        1,
-                    ]
-                ),
-                self.prompt_edge_feat[1].repeat(
-                    [
-                        len(query_prompt_edge[0]),
-                        1,
-                    ]
-                ),
-                self.prompt_edge_feat[2].repeat(
-                    [
-                        len(support_prompt_edge[0]),
-                        1,
-                    ]
-                ),
-            ]
-        )
-        prompted_graph = pyg.data.Data(
-            feat,
-            edge_index,
-            y=sample_label,
-            edge_attr=edge_feat,
-            edge_type=edge_type,
-        )
-        return prompted_graph
-
-    def make_prompted_graph_reuse(self, feature_graph):
-        (true_feature_graph, false_feature_graph, class_emb) = feature_graph
-        num_sample = len(false_feature_graph)
-        all_graphs = true_feature_graph + false_feature_graph
-        num_nodes = torch.tensor(
-            [len(g[0]) for g in all_graphs], dtype=torch.long
-        )
-        total_num_nodes = num_nodes.sum()
-        # print(self.prompt_text_feat)
-        feat = torch.cat(
-            [g[0] for g in all_graphs]
-            + [
-                self.prompt_text_feat.repeat(len(all_graphs), 1),
-                class_emb.repeat(len(all_graphs), 1),
-            ],
-            dim=0,
-        )
-        feature_nodes_indices = torch.arange(total_num_nodes, dtype=torch.long)
-        prompt_nodes_indices = torch.arange(
-            total_num_nodes,
-            total_num_nodes + len(all_graphs),
-            dtype=torch.long,
-        ).repeat_interleave(num_nodes)
-        feature2prompt_edge = torch.stack(
-            [feature_nodes_indices, prompt_nodes_indices], dim=0
-        )
-        (
-            self_prompt2prompt_edge,
-            fs_prompt2prompt_edge,
-        ) = self.self_sample_edge_index(total_num_nodes, num_sample)
-        prompt2prompt_edge = torch.cat(
-            [self_prompt2prompt_edge, fs_prompt2prompt_edge],
-            dim=-1,
-        )
-        prompt_edges = [
-            feature2prompt_edge,
-            feature2prompt_edge[[1, 0]],
-            prompt2prompt_edge,
-        ]
-        prompt_edge_types = [
-            torch.zeros(
-                len(feature2prompt_edge[0]),
-                dtype=torch.long,
-            )
-            + 1,
-            torch.zeros(len(feature2prompt_edge[0]), dtype=torch.long) + 2,
-            torch.zeros(len(prompt2prompt_edge[0]), dtype=torch.long) + 3,
-        ]
-        prompt_feat_multiple = 1
-        if not self.single_prompt_edge:
-            prompt_edges += [prompt2prompt_edge[[1, 0]]]
-            prompt_edge_types += [
-                torch.zeros(len(prompt2prompt_edge[0]), dtype=torch.long) + 4
-            ]
-            prompt_feat_multiple = 2
-        edge_feat = torch.cat([g[1] for g in all_graphs], dim=0)
-        edge_index = torch.cat([g[2] for g in all_graphs], dim=-1)
-        edge_index = torch.cat([edge_index] + prompt_edges, dim=-1)
-        edge_type = torch.cat(
-            [torch.zeros(len(edge_feat), dtype=torch.long)] + prompt_edge_types
-        )
-        edge_feat = torch.cat(
-            [
-                edge_feat,
-                self.prompt_edge_feat[0].repeat(
-                    [
-                        2 * len(feature2prompt_edge[0]),
-                        1,
-                    ]
-                ),
-                self.prompt_edge_feat[1].repeat(
-                    [
-                        len(self_prompt2prompt_edge[0]),
-                        1,
-                    ]
-                ),
-                self.prompt_edge_feat[2].repeat(
-                    [
-                        len(fs_prompt2prompt_edge[0]),
-                        1,
-                    ]
-                ),
-            ]
-        )
-        prompted_graph = pyg.data.Data(
-            feat,
-            edge_index,
-            y=torch.cat([g[-2] for g in all_graphs], dim=0),
-            edge_attr=edge_feat,
-            edge_type=edge_type,
-        )
-        return prompted_graph
-
-    def to_pyg(self, feature_graph, prompted_graph):
-        if self.reuse:
-            return self.to_pyg_reuse(feature_graph, prompted_graph)
-        else:
-            return self.to_pyg_simple(feature_graph, prompted_graph)
-
-    def to_pyg_reuse(self, feature_graph, prompted_graph):
-        true_nodes_mask = torch.zeros(
-            prompted_graph.num_nodes, dtype=torch.bool
-        )
-        true_nodes_mask[
-            prompted_graph.num_nodes - len(feature_graph[1]) * 2 :
-        ] = True
-        bin_labels = torch.zeros(prompted_graph.num_nodes, dtype=torch.float)
-        bin_labels[
-            prompted_graph.num_nodes
-            - len(feature_graph[1]) * 2 : prompted_graph.num_nodes
-            - len(feature_graph[1])
-        ] = 1
-        # bin_labels[prompted_graph.num_nodes - len(feature_graph[1]) :] = 0
-        # if self.trim_class_func is None:
-        prompted_graph.bin_labels = bin_labels
-        target_node_mask = torch.zeros(
-            prompted_graph.num_nodes, dtype=torch.bool
-        )
-        # target_node_mask[feature_graph[0][-4]] = True
-        prompted_graph.target_node_mask = target_node_mask
-        prompted_graph.true_nodes_mask = true_nodes_mask
-        prompted_graph.sample_num_nodes = prompted_graph.num_nodes
-        prompted_graph.num_classes = 1
-        return prompted_graph
-
-    def to_pyg_simple(self, feature_graph, prompted_graph):
-        true_nodes_mask = torch.zeros(
-            prompted_graph.num_nodes, dtype=torch.bool
-        )
-        true_nodes_mask[prompted_graph.num_nodes - 1 :] = True
-        bin_labels = torch.zeros(prompted_graph.num_nodes, dtype=torch.float)
-        bin_labels[prompted_graph.num_nodes - 1 :] = prompted_graph.y
-        # bin_labels[prompted_graph.num_nodes - len(feature_graph[1]) :] = 0
-        # if self.trim_class_func is None:
-        prompted_graph.bin_labels = bin_labels
-        target_node_mask = torch.zeros(
-            prompted_graph.num_nodes, dtype=torch.bool
-        )
-        # target_node_mask[feature_graph[0][-4]] = True
-        prompted_graph.target_node_mask = target_node_mask
-        prompted_graph.true_nodes_mask = true_nodes_mask
-        prompted_graph.sample_num_nodes = prompted_graph.num_nodes
-        prompted_graph.num_classes = 1
-        return prompted_graph
-
-
-class GraphListHierFixDataset(GraphListDataset):
-    def __init__(
-        self,
-        graphs,
-        class_embs,
-        prompt_edge_feat,
-        prompt_text_feat,
-        data_idx,
-        trim_class_func=None,
-        single_prompt_edge=False,
-        class_ind=None,
-        shot=10,
-        use_class_emb=False,
-        **kwargs,
-    ):
-        super().__init__(
-            graphs,
-            class_embs,
-            prompt_edge_feat,
-            data_idx,
-            trim_class_func,
-            single_prompt_edge,
-            **kwargs,
-        )
-        self.prompt_text_feat = prompt_text_feat
-        self.class_ind = class_ind
-        self.shot = shot
-        self.num_classes = self.class_ind.size()[1]
-        self.true_can = [
-            (can == 1).nonzero(as_tuple=True)[0] for can in self.class_ind.T
-        ]
-        self.false_can = [
-            (can == 0).nonzero(as_tuple=True)[0] for can in self.class_ind.T
-        ]
-        self.use_class_emb = use_class_emb
-
-    def make_feature_graph(self, index):
-        query_graph = super(GraphListHierFixDataset, self).make_feature_graph(
-            index
-        )
-        # print(true_can)
-        label = query_graph[-1]
-        support_graph = []
-        valid_labels = []
-        for i, label_val in enumerate(label.view(-1)):
-            # print(i)
-            if label_val == label_val:
-                true_can = self.true_can[i]
-                if len(true_can) < self.shot:
-                    support_graph.append([])
-                    label_val = float("nan")
-                else:
-                    support_g = true_can[
-                        torch.randperm(len(true_can))[: self.shot]
-                    ]
-                    support_graph.append(
-                        [
-                            super(
-                                GraphListHierFixDataset, self
-                            ).make_feature_graph(g_ind)
-                            for g_ind in support_g
-                        ]
-                    )
-            valid_labels.append(label_val)
-        true_label = torch.tensor(valid_labels, dtype=torch.float).view(1, -1)
-        return (
-            query_graph,
-            support_graph,
-            query_graph[-3],
-            true_label,
-        )
-
-    def make_prompted_graph(self, feature_graph):
-        (query_graph, support_graph, class_emb, true_label) = feature_graph
-        all_graphs = [query_graph]
-        for sg in support_graph:
-            all_graphs += sg
-        num_nodes = torch.tensor(
-            [len(g[0]) for g in all_graphs], dtype=torch.long
-        )
-        total_num_nodes = num_nodes.sum()
-        feat = torch.cat(
-            [g[0] for g in all_graphs]
-            + [
-                self.prompt_text_feat[:1].repeat(len(all_graphs), 1),
-                class_emb
-                if self.use_class_emb
-                else self.prompt_text_feat[1:2].repeat(len(class_emb), 1),
-            ],
-            dim=0,
-        )
-        feature_nodes_indices = torch.arange(total_num_nodes, dtype=torch.long)
-        prompt_nodes_indices = torch.arange(
-            total_num_nodes,
-            total_num_nodes + len(all_graphs),
-            dtype=torch.long,
-        ).repeat_interleave(num_nodes)
-
-        feature2prompt_edge = torch.stack(
-            [feature_nodes_indices, prompt_nodes_indices], dim=0
-        )
-        valid_label_ind = (
-            (true_label == true_label).nonzero(as_tuple=True)[1]
-            + total_num_nodes
-            + len(all_graphs)
-        )
-        query_prompt_edge = torch.stack(
-            [
-                torch.zeros(len(class_emb), dtype=torch.long)
-                + total_num_nodes,
-                torch.arange(
-                    total_num_nodes + len(all_graphs),
-                    total_num_nodes + len(all_graphs) + len(class_emb),
-                    dtype=torch.long,
-                ),
-            ],
-            dim=0,
-        )
-        support_prompt_edge = torch.stack(
-            [
-                torch.arange(
-                    total_num_nodes + 1,
-                    total_num_nodes + len(all_graphs),
-                    dtype=torch.long,
-                ),
-                valid_label_ind.repeat_interleave(self.shot),
-            ],
-            dim=0,
-        )
-
-        prompt2prompt_edge = torch.cat(
-            [query_prompt_edge, support_prompt_edge],
-            dim=-1,
-        )
-        prompt_edges = [
-            feature2prompt_edge,
-            feature2prompt_edge[[1, 0]],
-            prompt2prompt_edge,
-        ]
-        prompt_edge_types = [
-            torch.zeros(
-                len(feature2prompt_edge[0]),
-                dtype=torch.long,
-            )
-            + 1,
-            torch.zeros(len(feature2prompt_edge[0]), dtype=torch.long) + 2,
-            torch.zeros(len(query_prompt_edge[0]), dtype=torch.long) + 3,
-            torch.zeros(len(support_prompt_edge[0]), dtype=torch.long) + 3,
-        ]
-        prompt_feat_multiple = 1
-        if not self.single_prompt_edge:
-            prompt_edges += [prompt2prompt_edge[[1, 0]]]
-            prompt_edge_types += [
-                torch.zeros(len(prompt2prompt_edge[0]), dtype=torch.long) + 4
-            ]
-            prompt_feat_multiple = 2
-        edge_feat = torch.cat([g[1] for g in all_graphs], dim=0)
-        edge_index = torch.cat([g[2] for g in all_graphs], dim=-1)
-        edge_index = torch.cat([edge_index] + prompt_edges, dim=-1)
-        edge_type = torch.cat(
-            [torch.zeros(len(edge_feat), dtype=torch.long)] + prompt_edge_types
-        )
-        edge_feat = torch.cat(
-            [
-                edge_feat,
-                self.prompt_edge_feat[0].repeat(
-                    [
-                        2 * len(feature2prompt_edge[0]),
-                        1,
-                    ]
-                ),
-                self.prompt_edge_feat[1].repeat(
-                    [
-                        len(query_prompt_edge[0]),
-                        1,
-                    ]
-                ),
-                self.prompt_edge_feat[2].repeat(
-                    [
-                        len(support_prompt_edge[0]),
-                        1,
-                    ]
-                ),
-            ]
-        )
-        prompted_graph = pyg.data.Data(
-            feat,
-            edge_index,
-            y=torch.cat([g[-2] for g in all_graphs], dim=0),
-            edge_attr=edge_feat,
-            edge_type=edge_type,
-        )
-        return prompted_graph
-
-    def to_pyg(self, feature_graph, prompted_graph):
-        true_nodes_mask = torch.zeros(
-            prompted_graph.num_nodes, dtype=torch.bool
-        )
-        true_nodes_mask[
-            prompted_graph.num_nodes - len(feature_graph[-2]) :
-        ] = True
-        bin_labels = torch.zeros(prompted_graph.num_nodes, dtype=torch.float)
-        bin_labels[
-            prompted_graph.num_nodes - len(feature_graph[-2]) :
-        ] = feature_graph[-1]
-        # bin_labels[prompted_graph.num_nodes - len(feature_graph[1]) :] = 0
-        # if self.trim_class_func is None:
-        prompted_graph.bin_labels = bin_labels
-        target_node_mask = torch.zeros(
-            prompted_graph.num_nodes, dtype=torch.bool
-        )
-        # target_node_mask[feature_graph[0][-4]] = True
-        prompted_graph.target_node_mask = target_node_mask
-        prompted_graph.true_nodes_mask = true_nodes_mask
-        prompted_graph.sample_num_nodes = prompted_graph.num_nodes
-        prompted_graph.num_classes = len(feature_graph[-2])
-        return prompted_graph
 
 
 class MultiDataset(DatasetWithCollate):

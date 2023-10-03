@@ -238,35 +238,29 @@ def ConstructMolFSTrain(
     )
 
 
-def nc_trim_class(label, num_class):
-    binary_rep = torch.zeros((1, num_class))
+def process_pth_label(embs, label):
+    binary_rep = torch.zeros((1, len(embs)))
     binary_rep[0, label] = 1
-    return label.view(1, -1), binary_rep
+    return label.view(1, -1), embs, binary_rep
 
 
-def mol_multi_trim_class(embs, classes):
-    valid_idx = classes == classes
+def process_multi_label(embs, label):
+    valid_idx = label == label
     # valid_idx = torch.zeros_like(classes, dtype=torch.bool)
     return (
         torch.tensor([[0]]),
         embs[valid_idx.view(-1)].detach().clone(),
-        classes[:, valid_idx.view(-1)].detach().clone(),
+        label[:, valid_idx.view(-1)].detach().clone(),
     )
 
 
-def mol_trim_class(embs, label):
-    label = label.to(torch.long)
-    one_hot_label = torch.nn.functional.one_hot(label, num_classes=2)
-    return label, embs, one_hot_label
-
-
-def link_trim_class(label, num_class):
-    binary_rep = torch.zeros((1, num_class))
+def process_int_label(embs, label):
+    binary_rep = torch.zeros((1, len(embs)))
     binary_rep[0, label] = 1
-    return torch.tensor([label]).view(1, -1), binary_rep
+    return torch.tensor([label]).view(1, -1), embs, binary_rep
 
 
-none_trim_class = None
+none_process_label = None
 
 
 task_config_lookup = {
@@ -276,7 +270,7 @@ task_config_lookup = {
         "preprocess": None,
         "construct": "ConstructNodeCls",
         "args": {"walk_length": None},
-        "trim_class": "nc_trim_class",
+        "process_label_func": "process_pth_label",
         "eval_set_constructs": [
             {
                 "stage": "valid",
@@ -301,7 +295,7 @@ task_config_lookup = {
         "preprocess": "LinkConstructGraph",
         "construct": "ConstructLinkCls",
         "args": {"remove_edge": True, "walk_length": None},
-        "trim_class": "link_trim_class",
+        "process_label_func": "process_int_label",
         "eval_set_constructs": [
             {
                 "stage": "valid",
@@ -329,7 +323,7 @@ task_config_lookup = {
         "preprocess": None,
         "construct": "ConstructNodeCls",
         "args": {"walk_length": None},
-        "trim_class": "link_trim_class",
+        "process_label_func": "process_int_label",
         "eval_set_constructs": [
             {
                 "stage": "valid",
@@ -354,7 +348,7 @@ task_config_lookup = {
         "preprocess": "LinkConstructGraph",
         "construct": "ConstructLinkCls",
         "args": {"remove_edge": True, "walk_length": None},
-        "trim_class": "link_trim_class",
+        "process_label_func": "process_int_label",
         "eval_set_constructs": [
             {
                 "stage": "valid",
@@ -382,7 +376,7 @@ task_config_lookup = {
         "preprocess": None,
         "construct": "ConstructNodeCls",
         "args": {"walk_length": None},
-        "trim_class": "link_trim_class",
+        "process_label_func": "process_int_label",
         "eval_set_constructs": [
             {
                 "stage": "valid",
@@ -407,7 +401,7 @@ task_config_lookup = {
         "preprocess": None,
         "construct": "ConstructKG",
         "args": {"remove_edge": True, "walk_length": None},
-        "trim_class": "link_trim_class",
+        "process_label_func": "process_int_label",
         "eval_set_constructs": [
             {
                 "stage": "valid",
@@ -435,7 +429,7 @@ task_config_lookup = {
         "preprocess": None,
         "construct": "ConstructKG",
         "args": {"remove_edge": True, "walk_length": None},
-        "trim_class": "link_trim_class",
+        "process_label_func": "process_int_label",
         "eval_set_constructs": [
             {
                 "stage": "valid",
@@ -463,7 +457,7 @@ task_config_lookup = {
         "preprocess": None,
         "construct": "ConstructNodeCls",
         "args": {"walk_length": None},
-        "trim_class": "nc_trim_class",
+        "process_label_func": "process_pth_label",
         "eval_set_constructs": [
             {
                 "stage": "valid",
@@ -488,22 +482,22 @@ task_config_lookup = {
         "preprocess": None,
         "construct": "ConstructMolCls",
         "args": {"walk_length": None},
-        "trim_class": "mol_multi_trim_class",
+        "process_label_func": "process_multi_label",
         "eval_set_constructs": [
             {
                 "stage": "valid",
                 "split_name": "valid",
-                "trim_class": "none_trim_class",
+                "process_label_func": "none_process_label",
             },
             {
                 "stage": "test",
                 "split_name": "test",
-                "trim_class": "none_trim_class",
+                "process_label_func": "none_process_label",
             },
             {
                 "stage": "test",
                 "split_name": "train",
-                "trim_class": "none_trim_class",
+                "process_label_func": "none_process_label",
             },
         ],
         "eval_metric": "apr",
@@ -516,22 +510,22 @@ task_config_lookup = {
         "preprocess": None,
         "construct": "ConstructMolCls",
         "args": {"walk_length": None},
-        "trim_class": "mol_multi_trim_class",
+        "process_label_func": "process_multi_label",
         "eval_set_constructs": [
             {
                 "stage": "valid",
                 "split_name": "valid",
-                "trim_class": "none_trim_class",
+                "process_label_func": "none_process_label",
             },
             {
                 "stage": "test",
                 "split_name": "test",
-                "trim_class": "none_trim_class",
+                "process_label_func": "none_process_label",
             },
             {
                 "stage": "test",
                 "split_name": "train",
-                "trim_class": "none_trim_class",
+                "process_label_func": "none_process_label",
             },
         ],
         "eval_metric": "apr",
@@ -544,22 +538,22 @@ task_config_lookup = {
         "preprocess": None,
         "construct": "ConstructMolCls",
         "args": {"walk_length": None},
-        "trim_class": "mol_trim_class",
+        "process_label_func": "process_pth_label",
         "eval_set_constructs": [
             {
                 "stage": "valid",
                 "split_name": "valid",
-                "trim_class": "none_trim_class",
+                "process_label_func": "none_process_label",
             },
             {
                 "stage": "test",
                 "split_name": "test",
-                "trim_class": "none_trim_class",
+                "process_label_func": "none_process_label",
             },
             {
                 "stage": "test",
                 "split_name": "train",
-                "trim_class": "none_trim_class",
+                "process_label_func": "none_process_label",
             },
         ],
         "eval_metric": "auc",
@@ -600,19 +594,19 @@ class TaskConstructor:
                 self.dataset[data],
                 split,
                 "train",
-                globals()[config["trim_class"]],
+                globals()[config["process_label_func"]],
                 global_data=global_data,
                 **config["args"],
             )
             self.train_set.append(train_data)
 
             for eval_construct_config in config["eval_set_constructs"]:
-                if "trim_class" in eval_construct_config:
+                if "process_label_func" in eval_construct_config:
                     trim_class_func = globals()[
-                        eval_construct_config["trim_class"]
+                        eval_construct_config["process_label_func"]
                     ]
                 else:
-                    trim_class_func = globals()[config["trim_class"]]
+                    trim_class_func = globals()[config["process_label_func"]]
 
                 if "args" in eval_construct_config:
                     eval_args = eval_construct_config["args"]
