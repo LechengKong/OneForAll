@@ -18,7 +18,7 @@ class DataWithMeta:
         classes: Union[int, List[int]] = 2,
         is_regression: bool = False,
         meta_data: Any = None,
-        sample_size: Optional[int] = None,
+        sample_size: Optional[int] = -1,
     ):
         self.data = data
         self.batch_size = batch_size

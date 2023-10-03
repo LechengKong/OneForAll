@@ -88,7 +88,7 @@ def CiteLinkSplitter(dataset):
     val_offset = int(len(edge_perm) * 0.9)
     edge_indices = {
         "train": edge_perm[:train_offset],
-        "val": edge_perm[train_offset:val_offset],
+        "valid": edge_perm[train_offset:val_offset],
         "test": edge_perm[val_offset:],
     }
     return edge_indices
@@ -129,6 +129,15 @@ name2splitter = {
 }
 
 
+def LinkConstructGraph(dataset, split):
+    text_g = dataset.data
+    edges = text_g.edge_index
+    graph_dict = text_g.to_dict()
+    graph_dict["edge_index"] = edges[:, split["train"]]
+    train_graph = pyg.data.Data(**graph_dict)
+    return train_graph
+
+
 def make_data(
     name, data, split_name, metric, eval_func, num_classes, **kwargs
 ):
@@ -143,15 +152,10 @@ def make_data(
     )
 
 
-def ConstructNodeClsTrain(name, dataset, split, split_name, **kwargs):
+def ConstructNodeCls(
+    name, dataset, split, split_name, to_bin_cls_func, **kwargs
+):
     text_g = dataset.data
-    text_g.x = text_g.x_text_feat
-    text_g.prompt_edge_feat = dataset.prompt_edge_feat
-
-    def trim_class(label, num_class):
-        binary_rep = torch.zeros((1, num_class))
-        binary_rep[0, label] = 1
-        return label.view(1, -1), binary_rep
 
     return SubgraphHierDataset(
         text_g,
@@ -159,148 +163,512 @@ def ConstructNodeClsTrain(name, dataset, split, split_name, **kwargs):
         split[split_name],
         prompt_feat=text_g.prompt_text_feat,
         to_undirected=True,
-        trim_class_func=trim_class,
+        trim_class_func=to_bin_cls_func,
         walk_length=kwargs["walk_length"],
     )
 
 
-def ConstructLinkTrain(name, dataset, split, **kwargs):
+def ConstructLinkCls(
+    name, dataset, split, split_name, to_bin_cls_func, **kwargs
+):
     text_g = dataset.data
-    text_g.x = text_g.x_text_feat
-    text_g.prompt_edge_feat = dataset.prompt_edge_feat
     edges = text_g.edge_index
-    graph_dict = text_g.to_dict()
-    graph_dict["edge_index"] = edges[:, split["train"]]
-    train_graph = pyg.data.Data(**graph_dict)
-
-    def trim_class(label, num_class):
-        binary_rep = torch.zeros((1, num_class))
-        binary_rep[0, label] = 1
-        return torch.tensor([label]).view(1, -1), binary_rep
+    train_graph = kwargs["global_data"]
 
     return SubgraphLinkHierDataset(
         train_graph,
         train_graph.edge_label_feat,
-        edges.T[split["train"]].numpy(),
-        prompt_feat=train_graph.prompt_node_edge_feat,
+        edges.T[split[split_name]].numpy(),
+        prompt_feat=train_graph.prompt_text_edge_feat,
         to_undirected=True,
         hop=3,
-        remove_edge=True,
-        trim_class_func=trim_class,
+        remove_edge=kwargs["remove_edge"],
+        trim_class_func=to_bin_cls_func,
         walk_length=kwargs["walk_length"],
     )
 
 
-def ConstructKGTrain(name, dataset, split, **kwargs):
+def ConstructKG(name, dataset, split, split_name, to_bin_cls_func, **kwargs):
     text_g = dataset.data
-    text_g.x = text_g.x_text_feat
-    text_g.prompt_edge_feat = dataset.prompt_edge_feat
-
-    def trim_class(label, num_class):
-        binary_rep = torch.zeros((1, num_class))
-        binary_rep[0, label] = 1
-        return torch.tensor([label]).view(1, -1), binary_rep
 
     return SubgraphKGHierDataset(
         text_g,
         text_g.edge_label_feat,
-        split["train"],
+        split[split_name],
         prompt_feat=text_g.prompt_text_feat,
         to_undirected=True,
         hop=2,
-        remove_edge=True,
-        trim_class_func=trim_class,
+        remove_edge=kwargs["remove_edge"],
+        trim_class_func=to_bin_cls_func,
         walk_length=kwargs["walk_length"],
     )
 
 
-def ConstructMolMultiClsTrain(name, dataset, split, **kwargs):
-    def trim_class(embs, classes):
-        valid_idx = classes == classes
-        # valid_idx = torch.zeros_like(classes, dtype=torch.bool)
-        return (
-            torch.tensor([[0]]),
-            embs[valid_idx.view(-1)].detach().clone(),
-            classes[:, valid_idx.view(-1)].detach().clone(),
-        )
+def ConstructMolCls(
+    name, dataset, split, split_name, to_bin_cls_func, **kwargs
+):
 
     return GraphListHierDataset(
         dataset,
         dataset.label_text_feat,
         dataset.prompt_edge_feat,
         dataset.prompt_text_feat,
-        split["train"],
-        trim_class_func=trim_class,
+        split[split_name],
+        trim_class_func=to_bin_cls_func,
         single_prompt_edge=True,
         walk_length=kwargs["walk_length"],
     )
 
 
-def ConstructMolTrain(name, dataset, split, **kwargs):
-    def trim_class(embs, label):
-        label = label.to(torch.long)
-        one_hot_label = torch.nn.functional.one_hot(label, num_classes=2)
-        return label, embs, one_hot_label
-
-    return GraphListHierDataset(
-        dataset,
-        dataset.label_text_feat,
-        dataset.prompt_edge_feat,
-        dataset.prompt_text_feat,
-        split["train"],
-        trim_class_func=trim_class,
-        single_prompt_edge=True,
-        walk_length=kwargs["walk_length"],
-    )
-
-
-def ConstructMolFSTrain(name, dataset, split, **kwargs):
+def ConstructMolFSTrain(
+    name, dataset, split, split_name, to_bin_cls_func, **kwargs
+):
     classes = dataset.y.view(len(dataset), -1)[split["train"]]
-
-    def trim_class(embs, classes):
-        valid_idx = classes == classes
-        # valid_idx = torch.zeros_like(classes, dtype=torch.bool)
-        return (
-            torch.tensor([[0]]),
-            embs[valid_idx.view(-1)].detach().clone(),
-            classes[:, valid_idx.view(-1)].detach().clone(),
-        )
 
     return GraphListHierFSDataset(
         dataset,
         dataset.label_text_feat,
         dataset.prompt_edge_feat,
         dataset.prompt_text_feat,
-        split["train"],
-        trim_class_func=trim_class,
+        split[split_name],
+        trim_class_func=to_bin_cls_func,
         single_prompt_edge=True,
         walk_length=kwargs["walk_length"],
         class_ind=classes,
     )
 
 
-taskname2func = {
-    "arxiv": ArxivNodeClsTask,
-    "cora_node": CiteNodeClsTask,
-    "pubmed_node": CiteNodeClsTask,
-    "cora_link": CiteLinkTask,
-    "pubmed_link": CiteLinkTask,
-    "WN18RR": KGLinkTask,
-    "FB15K237": KGLinkTask,
-    "wikics": WikiNodeClsTask,
-    "chemblpre": MOLMultiClsTask,
-    "chempcba": MOLMultiClsTask,
-    "chemhiv": MOLClsTask,
-    "molzero": MOLZeroClsTask,
+def nc_trim_class(label, num_class):
+    binary_rep = torch.zeros((1, num_class))
+    binary_rep[0, label] = 1
+    return label.view(1, -1), binary_rep
+
+
+def mol_multi_trim_class(embs, classes):
+    valid_idx = classes == classes
+    # valid_idx = torch.zeros_like(classes, dtype=torch.bool)
+    return (
+        torch.tensor([[0]]),
+        embs[valid_idx.view(-1)].detach().clone(),
+        classes[:, valid_idx.view(-1)].detach().clone(),
+    )
+
+
+def mol_trim_class(embs, label):
+    label = label.to(torch.long)
+    one_hot_label = torch.nn.functional.one_hot(label, num_classes=2)
+    return label, embs, one_hot_label
+
+
+def link_trim_class(label, num_class):
+    binary_rep = torch.zeros((1, num_class))
+    binary_rep[0, label] = 1
+    return torch.tensor([label]).view(1, -1), binary_rep
+
+
+none_trim_class = None
+
+
+task_config_lookup = {
+    "arxiv": {
+        "dataset_name": "arxiv",
+        "dataset_splitter": "ArxivSplitter",
+        "preprocess": None,
+        "construct": "ConstructNodeCls",
+        "args": {"walk_length": None},
+        "trim_class": "nc_trim_class",
+        "eval_set_constructs": [
+            {
+                "stage": "valid",
+                "split_name": "valid",
+            },
+            {
+                "stage": "test",
+                "split_name": "test",
+            },
+            {
+                "stage": "test",
+                "split_name": "train",
+            },
+        ],
+        "eval_metric": "acc",
+        "eval_func": "classification_func",
+        "num_classes": 40,
+    },
+    "cora_link": {
+        "dataset_name": "cora",
+        "dataset_splitter": "CiteLinkSplitter",
+        "preprocess": "LinkConstructGraph",
+        "construct": "ConstructLinkCls",
+        "args": {"remove_edge": True, "walk_length": None},
+        "trim_class": "link_trim_class",
+        "eval_set_constructs": [
+            {
+                "stage": "valid",
+                "split_name": "valid",
+                "args": {"remove_edge": False, "walk_length": None},
+            },
+            {
+                "stage": "test",
+                "split_name": "test",
+                "args": {"remove_edge": False, "walk_length": None},
+            },
+            {
+                "stage": "test",
+                "split_name": "train",
+                "args": {"remove_edge": True, "walk_length": None},
+            },
+        ],
+        "eval_metric": "auc",
+        "eval_func": "binary_auc_func",
+        "num_classes": 2,
+    },
+    "cora_node": {
+        "dataset_name": "cora",
+        "dataset_splitter": "CiteSplitter",
+        "preprocess": None,
+        "construct": "ConstructNodeCls",
+        "args": {"walk_length": None},
+        "trim_class": "link_trim_class",
+        "eval_set_constructs": [
+            {
+                "stage": "valid",
+                "split_name": "valid",
+            },
+            {
+                "stage": "test",
+                "split_name": "test",
+            },
+            {
+                "stage": "test",
+                "split_name": "train",
+            },
+        ],
+        "eval_metric": "acc",
+        "eval_func": "classification_func",
+        "num_classes": 7,
+    },
+    "pubmed_link": {
+        "dataset_name": "pubmed",
+        "dataset_splitter": "CiteLinkSplitter",
+        "preprocess": "LinkConstructGraph",
+        "construct": "ConstructLinkCls",
+        "args": {"remove_edge": True, "walk_length": None},
+        "trim_class": "link_trim_class",
+        "eval_set_constructs": [
+            {
+                "stage": "valid",
+                "split_name": "valid",
+                "args": {"remove_edge": False, "walk_length": None},
+            },
+            {
+                "stage": "test",
+                "split_name": "test",
+                "args": {"remove_edge": False, "walk_length": None},
+            },
+            {
+                "stage": "test",
+                "split_name": "train",
+                "args": {"remove_edge": True, "walk_length": None},
+            },
+        ],
+        "eval_metric": "auc",
+        "eval_func": "binary_auc_func",
+        "num_classes": 2,
+    },
+    "pubmed_node": {
+        "dataset_name": "pubmed",
+        "dataset_splitter": "CiteSplitter",
+        "preprocess": None,
+        "construct": "ConstructNodeCls",
+        "args": {"walk_length": None},
+        "trim_class": "link_trim_class",
+        "eval_set_constructs": [
+            {
+                "stage": "valid",
+                "split_name": "valid",
+            },
+            {
+                "stage": "test",
+                "split_name": "test",
+            },
+            {
+                "stage": "test",
+                "split_name": "train",
+            },
+        ],
+        "eval_metric": "acc",
+        "eval_func": "classification_func",
+        "num_classes": 3,
+    },
+    "WN18RR": {
+        "dataset_name": "WN18RR",
+        "dataset_splitter": "KGSplitter",
+        "preprocess": None,
+        "construct": "ConstructKG",
+        "args": {"remove_edge": True, "walk_length": None},
+        "trim_class": "link_trim_class",
+        "eval_set_constructs": [
+            {
+                "stage": "valid",
+                "split_name": "valid",
+                "args": {"remove_edge": False, "walk_length": None},
+            },
+            {
+                "stage": "test",
+                "split_name": "test",
+                "args": {"remove_edge": False, "walk_length": None},
+            },
+            {
+                "stage": "test",
+                "split_name": "train",
+                "args": {"remove_edge": True, "walk_length": None},
+            },
+        ],
+        "eval_metric": "acc",
+        "eval_func": "classification_func",
+        "num_classes": 11,
+    },
+    "FB15K237": {
+        "dataset_name": "FB15K237",
+        "dataset_splitter": "KGSplitter",
+        "preprocess": None,
+        "construct": "ConstructKG",
+        "args": {"remove_edge": True, "walk_length": None},
+        "trim_class": "link_trim_class",
+        "eval_set_constructs": [
+            {
+                "stage": "valid",
+                "split_name": "valid",
+                "args": {"remove_edge": False, "walk_length": None},
+            },
+            {
+                "stage": "test",
+                "split_name": "test",
+                "args": {"remove_edge": False, "walk_length": None},
+            },
+            {
+                "stage": "test",
+                "split_name": "train",
+                "args": {"remove_edge": True, "walk_length": None},
+            },
+        ],
+        "eval_metric": "acc",
+        "eval_func": "classification_func",
+        "num_classes": 237,
+    },
+    "wikics": {
+        "dataset_name": "wikics",
+        "dataset_splitter": "WikiSplitter",
+        "preprocess": None,
+        "construct": "ConstructNodeCls",
+        "args": {"walk_length": None},
+        "trim_class": "nc_trim_class",
+        "eval_set_constructs": [
+            {
+                "stage": "valid",
+                "split_name": "valid",
+            },
+            {
+                "stage": "test",
+                "split_name": "test",
+            },
+            {
+                "stage": "test",
+                "split_name": "train",
+            },
+        ],
+        "eval_metric": "acc",
+        "eval_func": "classification_func",
+        "num_classes": 10,
+    },
+    "chemblpre": {
+        "dataset_name": "chemblpre",
+        "dataset_splitter": "MolSplitter",
+        "preprocess": None,
+        "construct": "ConstructMolCls",
+        "args": {"walk_length": None},
+        "trim_class": "mol_multi_trim_class",
+        "eval_set_constructs": [
+            {
+                "stage": "valid",
+                "split_name": "valid",
+                "trim_class": "none_trim_class",
+            },
+            {
+                "stage": "test",
+                "split_name": "test",
+                "trim_class": "none_trim_class",
+            },
+            {
+                "stage": "test",
+                "split_name": "train",
+                "trim_class": "none_trim_class",
+            },
+        ],
+        "eval_metric": "apr",
+        "eval_func": "binary_apr_func",
+        "num_classes": 1296,
+    },
+    "chempcba": {
+        "dataset_name": "chempcba",
+        "dataset_splitter": "MolSplitter",
+        "preprocess": None,
+        "construct": "ConstructMolCls",
+        "args": {"walk_length": None},
+        "trim_class": "mol_multi_trim_class",
+        "eval_set_constructs": [
+            {
+                "stage": "valid",
+                "split_name": "valid",
+                "trim_class": "none_trim_class",
+            },
+            {
+                "stage": "test",
+                "split_name": "test",
+                "trim_class": "none_trim_class",
+            },
+            {
+                "stage": "test",
+                "split_name": "train",
+                "trim_class": "none_trim_class",
+            },
+        ],
+        "eval_metric": "apr",
+        "eval_func": "binary_apr_func",
+        "num_classes": 128,
+    },
+    "chemhiv": {
+        "dataset_name": "chemhiv",
+        "dataset_splitter": "MolSplitter",
+        "preprocess": None,
+        "construct": "ConstructMolCls",
+        "args": {"walk_length": None},
+        "trim_class": "mol_trim_class",
+        "eval_set_constructs": [
+            {
+                "stage": "valid",
+                "split_name": "valid",
+                "trim_class": "none_trim_class",
+            },
+            {
+                "stage": "test",
+                "split_name": "test",
+                "trim_class": "none_trim_class",
+            },
+            {
+                "stage": "test",
+                "split_name": "train",
+                "trim_class": "none_trim_class",
+            },
+        ],
+        "eval_metric": "auc",
+        "eval_func": "binary_auc_func",
+        "num_classes": 2,
+    },
 }
 
 
 class TaskConstructor:
-    def __init__(self, tasks, encoder):
+    def __init__(self, tasks, encoder, batch_size=256, sample_size=-1):
         self.tasks = tasks
+        self.batch_size = batch_size
+        self.sample_size = sample_size
         self.dataset = {}
+        self.train_set = []
+        self.valid_dm_set = []
+        self.test_dm_set = []
 
         for task in self.tasks:
-            data = task.split("_")[0]
+            config = task_config_lookup[task]
+            data = config["dataset_name"]
             if data not in self.dataset and data in name2dataset:
-                self.dataset[data] = name2dataset[data](data, encoder)
+                self.dataset[data] = name2dataset[data](
+                    data, sentence_encoder=encoder
+                )
+
+            split = globals()[config["dataset_splitter"]](self.dataset[data])
+            if config["preprocess"] is not None:
+                global_data = globals()[config["preprocess"]](
+                    self.dataset[data], split
+                )
+            else:
+                global_data = None
+
+            train_data = globals()[config["construct"]](
+                task,
+                self.dataset[data],
+                split,
+                "train",
+                globals()[config["trim_class"]],
+                global_data=global_data,
+                **config["args"],
+            )
+            self.train_set.append(train_data)
+
+            for eval_construct_config in config["eval_set_constructs"]:
+                if "trim_class" in eval_construct_config:
+                    trim_class_func = globals()[
+                        eval_construct_config["trim_class"]
+                    ]
+                else:
+                    trim_class_func = globals()[config["trim_class"]]
+
+                if "args" in eval_construct_config:
+                    eval_args = eval_construct_config["args"]
+                else:
+                    eval_args = config["args"]
+
+                if "construct" in eval_construct_config:
+                    construct = globals()[eval_construct_config["construct"]]
+                else:
+                    construct = globals()[config["construct"]]
+                eval_data = construct(
+                    task,
+                    self.dataset[data],
+                    split,
+                    eval_construct_config["split_name"],
+                    trim_class_func,
+                    global_data=global_data,
+                    **eval_args,
+                )
+
+                dm_data = make_data(
+                    data,
+                    eval_data,
+                    eval_construct_config["split_name"],
+                    config["eval_metric"],
+                    globals()[config["eval_func"]],
+                    config["num_classes"],
+                    batch_size=self.batch_size,
+                    sample_size=self.sample_size,
+                )
+
+                if eval_construct_config["stage"] == "valid":
+                    self.valid_dm_set.append(dm_data)
+                else:
+                    self.test_dm_set.append(dm_data)
+
+    def make_train_data(self, multiple, min_ratio):
+        train_data = MultiDataset(
+            self.train_set,
+            dataset_multiple=multiple,
+            patience=3,
+            window_size=5,
+            min_ratio=min_ratio,
+        )
+        return train_data
+
+    def make_full_dm_list(self, multiple, min_ratio, train_data=None):
+        text_dataset = {
+            "train": DataWithMeta(
+                self.make_train_data(multiple, min_ratio)
+                if not train_data
+                else train_data,
+                self.batch_size,
+                sample_size=self.sample_size,
+            ),
+            "val": self.valid_dm_set,
+            "test": self.test_dm_set,
+        }
+        return text_dataset

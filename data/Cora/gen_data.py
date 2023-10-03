@@ -38,10 +38,10 @@ def get_data(path):
     edge_text = [
         "feature edge. connected papers are cited together by other papers."
     ]
-    prompt_node_text = [
+    prompt_node_edge_text = [
         "prompt node. link prediction on the papers that are cited together"
     ]
-    prompt_node_edge_text = [
+    prompt_node_text = [
         "prompt node. node classification on the paper's category"
     ]
     prompt_edge_text = ["prompt edge."]
@@ -51,8 +51,8 @@ def get_data(path):
             clean_text,
             label_text,
             edge_text,
-            prompt_node_text,
             prompt_node_edge_text,
+            prompt_node_text,
             prompt_edge_text,
             edge_label_text,
         ],
@@ -69,8 +69,8 @@ class CoraOFADataset(OFAPygDataset):
         data_list[0].x_text_feat = text_emb[0]
         data_list[0].label_text_feat = text_emb[1]
         data_list[0].edge_text_feat = text_emb[2]
-        data_list[0].prompt_node_feat = text_emb[3]
-        data_list[0].prompt_node_edge_feat = text_emb[4]
+        data_list[0].prompt_text_edge_feat = text_emb[3]
+        data_list[0].prompt_text_feat = text_emb[4]
         data_list[0].prompt_edge_feat = text_emb[5]
         data_list[0].edge_label_feat = text_emb[6]
         return self.collate(data_list)

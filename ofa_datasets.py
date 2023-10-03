@@ -114,7 +114,7 @@ class SubgraphDataset(GraphTextDataset):
             binary_rep,
             target_node_id,
         ) = self.get_neighbors(index)
-        feat = self.g.x[neighbors]
+        feat = self.g.x_text_feat[neighbors]
         e_type = torch.zeros(len(edge_index[0]), dtype=torch.long)
         edge_feat = self.g.edge_text_feat.repeat([len(edge_index[0]), 1])
         return (
@@ -449,7 +449,7 @@ class SubgraphKGHierDataset(SubgraphHierDataset):
             edge_type,
         ) = self.get_neighbors(index)
         edge_index = torch.cat([edge_index, edge_index[[1, 0]]], dim=-1)
-        feat = self.g.x[neighbors]
+        feat = self.g.x_text_feat[neighbors]
         e_type = torch.zeros(len(edge_index[0]), dtype=torch.long)
         edge_feat = self.g.edge_text_feat[
             torch.cat(
@@ -543,7 +543,7 @@ class FewShotSubgraphDataset(SubgraphDataset):
         neighbors_list = [neighbors] + [
             subgraph[0] for subgraph in spt_subgraphs
         ]
-        feat = self.g.x[np.concatenate(neighbors_list)]
+        feat = self.g.x_text_feat[np.concatenate(neighbors_list)]
 
         # nodes_pt represents the index of first node in each subgraph
         # nodes_pt[0] is the index of query node; nodes_pt[1,-1]: idx of support nodes; nodes_pt[-1]: idx of first prompt node
@@ -1318,7 +1318,7 @@ class ZeroShotNCDataset(FewShotSubgraphDataset):
     def make_feature_graph(self, graph_set):
         (qry_subgraph, _) = graph_set
         neighbors, edge_index, num_nodes = qry_subgraph
-        feat = self.g.x[neighbors.astype(int)]
+        feat = self.g.x_text_feat[neighbors.astype(int)]
         nodes_pt = [0, num_nodes]
         edge_feat = self.g.edge_text_feat.repeat([edge_index.size(1), 1])
         return feat, edge_index, edge_feat, nodes_pt
@@ -1700,7 +1700,7 @@ class FewShotKGHierDataset(FewShotSubgraphDataset):
         neighbors_list = [neighbors] + [
             subgraph[0] for subgraph in spt_subgraphs
         ]
-        feat = self.g.x[np.concatenate(neighbors_list).astype(int)]
+        feat = self.g.x_text_feat[np.concatenate(neighbors_list).astype(int)]
         if not isinstance(feat, torch.Tensor):
             feat = torch.from_numpy(feat)
             feat = feat.float()
@@ -1991,7 +1991,7 @@ class ZeroShotKGDataset(FewShotKGHierDataset):
     def make_feature_graph(self, graph_set):
         (qry_subgraph, _) = graph_set
         neighbors, edge_index, num_nodes, edge_type = qry_subgraph
-        feat = self.g.x[neighbors.astype(int)]
+        feat = self.g.x_text_feat[neighbors.astype(int)]
         if not isinstance(feat, torch.Tensor):
             feat = torch.from_numpy(feat)
             feat = feat.float()
