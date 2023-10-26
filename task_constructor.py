@@ -1,5 +1,6 @@
 import torch
 import torch_geometric as pyg
+import json
 
 from data.arxiv.gen_data import ArxivOFADataset
 from data.Cora.gen_data import CoraOFADataset
@@ -28,6 +29,7 @@ from ofa_datasets import (
     SubgraphNopromptDataset,
     GraphListNopromptDataset,
 )
+from fs_datamanager import FewShotDataManager
 
 from gp.utils.utils import k_fold_ind, k_fold2_split
 from gp.lightning.data_template import DataWithMeta
@@ -42,7 +44,10 @@ from utils import (
     binary_apr_func,
     binary_auc_multi_func,
     binary_single_auc_func,
+    classification_single_func,
 )
+import os
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 name2dataset = {
     "arxiv": ArxivOFADataset,
@@ -236,6 +241,94 @@ def ConstructMolFSTrain(
         walk_length=kwargs["walk_length"],
         class_ind=classes,
     )
+
+def ConstructNCFSZS(
+        dataset, data_manager, n, k, split_name, random_flag=False, state_name=None, eval_metric=None, eval_func=None, train_flag=False, adj=None, total_task_num=50, class_emb_flag=False, undirected_flag=True,  **kwargs
+):
+    if class_emb_flag:
+        class_emb = dataset.label_text_feat
+    else:
+        class_emb = dataset.prompt_text_feat.repeat(
+            len(dataset.label_text_feat), 1
+        )
+    data_class = FewShotNCDataset if kwargs["k_shot"]>0 else ZeroShotNCDataset
+    ofa_data = data_class(
+        pyg_graph=dataset,
+        class_emb=class_emb,
+        data_idx=torch.zeros(total_task_num),
+        n_way=kwargs["n_way"],
+        k_shot=kwargs["k_shot"],
+        q_query=kwargs["q_query"],
+        datamanager=data_manager,
+        mode=split_name,
+        hop=2,
+        prompt_feat=dataset.prompt_text_feat,
+        to_undirected=undirected_flag,
+        adj=adj,
+        single_prompt_edge=True,
+        random_flag=random_flag,
+        min_n=n,
+        min_k=k,
+    )
+
+    if train_flag:
+        return ofa_data
+    else:
+        return DataWithMeta(
+            ofa_data,
+            batch_size=kwargs["fs_task_num"],
+            sample_size=-1,
+            metric=eval_metric,
+            state_name=state_name,
+            classes=n,
+            meta_data={"eval_func": eval_func}
+        )
+
+def ConstructLPFSZS(
+        dataset, data_manager, n, k, split_name, random_flag=False, state_name=None, eval_metric=None, eval_func=None, train_flag=False, adj=None, total_task_num=50, class_emb_flag=False, undirected_flag=True,  **kwargs
+):
+    if class_emb_flag:
+        class_emb = dataset.edge_label_feat
+    else:
+        class_emb = dataset.prompt_text_feat.repeat(
+            len(dataset.edge_label_feat), 1
+        )
+    data_class = FewShotKGDataset if kwargs["k_shot"]>0 else ZeroShotKGDataset
+    ofa_data = data_class(
+        pyg_graph=dataset,
+        class_emb=class_emb,
+        data_idx=torch.zeros(total_task_num),
+        n_way=kwargs["n_way"],
+        k_shot=kwargs["k_shot"],
+        q_query=kwargs["q_query"],
+        datamanager=data_manager,
+        mode=split_name,
+        edges=dataset.edge_index,
+        fs_edges=kwargs["edges"]["fs_edges"][split_name],
+        fs_edge_types=kwargs["edges"]["fs_edge_types"][split_name],
+        hop=2,
+        prompt_feat=dataset.prompt_text_feat,
+        to_undirected=undirected_flag,
+        adj=adj,
+        single_prompt_edge=True,
+        random_flag=random_flag,
+        min_n=n,
+        min_k=k,
+    )
+
+    if train_flag:
+        return ofa_data
+    else:
+        return DataWithMeta(
+            ofa_data,
+            batch_size=kwargs["fs_task_num"],
+            sample_size=-1,
+            metric=eval_metric,
+            state_name=state_name,
+            classes=n,
+            meta_data={"eval_func": eval_func}
+        )
+
 
 
 def process_pth_label(embs, label):
@@ -560,6 +653,170 @@ task_config_lookup = {
         "eval_func": "binary_auc_func",
         "num_classes": 2,
     },
+    "arxiv_fs": {
+            "dataset_name": "arxiv",
+            "task_level": "node",
+            "construct": "ConstructNCFSZS",
+            "args": {"walk_length": None, "n_way": 5, "min_n": 3, "val_n": [5, 3], "k_shot": 5, "min_k": 1, "val_k": [1, 3, 5], "q_query": 1, "fs_task_num": 1, "class_split_ratio": None, },
+            "mode": {"train": 0, "valid":1, "test":2},
+            "eval_set_constructs": [
+                {
+                    "stage": "valid",
+                },
+                {
+                    "stage": "test",
+                },
+            ],
+            "eval_metric": "acc",
+            "eval_func": "classification_single_func",
+            "train_only": False,
+            "eval_only": False,
+            "class_emb_flag": False,
+            "random_flag": True,
+    },
+    "arxiv_zs": {
+            "dataset_name": "arxiv",
+            "task_level": "node",
+            "construct": "ConstructNCFSZS",
+            "args": {"walk_length": None, "n_way": 5, "min_n": 3, "val_n": [5, 3], "k_shot": 0, "min_k": 0, "val_k": [0], "q_query": 3, "fs_task_num": 5, "class_split_ratio": None, },
+            "mode": {"train": 0, "valid":1, "test":2},
+            "eval_set_constructs": [
+                {
+                    "stage": "valid",
+                },
+                {
+                    "stage": "test",
+                },
+            ],
+            "eval_metric": "acc",
+            "eval_func": "classification_single_func",
+            "train_only": False,
+            "eval_only": False,
+            "class_emb_flag": True,
+            "random_flag": True,
+    },
+    "cora_fs": {
+            "dataset_name": "cora",
+            "task_level": "node",
+            "construct": "ConstructNCFSZS",
+            "args": {"walk_length": None, "n_way": 5, "min_n": 2, "val_n": [5, 2], "k_shot": 5, "min_k": 1, "val_k": [1, 3, 5], "q_query": 1, "fs_task_num": 1, "class_split_ratio": [0, 0, 7], },
+            "mode": {"valid":2, "test":2},
+            "eval_set_constructs": [
+                {
+                    "stage": "valid",
+                },
+                {
+                    "stage": "test",
+                },
+            ],
+            "eval_metric": "acc",
+            "eval_func": "classification_single_func",
+            "train_only": False,
+            "eval_only": True,
+            "class_emb_flag": False,
+    },
+    "cora_zs": {
+            "dataset_name": "cora",
+            "task_level": "node",
+            "construct": "ConstructNCFSZS",
+            "args": {"walk_length": None, "n_way": 5, "min_n": 2, "val_n": [5, 2], "k_shot": 5, "min_k": 1, "val_k": [1, 3, 5], "q_query": 1, "fs_task_num": 1, "class_split_ratio": [0, 0, 7], },
+            "mode": {"valid":2, "test":2},
+            "eval_set_constructs": [
+                {
+                    "stage": "valid",
+                },
+                {
+                    "stage": "test",
+                },
+            ],
+            "eval_metric": "acc",
+            "eval_func": "classification_single_func",
+            "train_only": False,
+            "eval_only": True,
+            "class_emb_flag": True,
+    },
+    "fb_fs": {
+            "dataset_name": "FB15K237",
+            "task_level": "link",
+            "construct": "ConstructLPFSZS",
+            "args": {"walk_length": None, "n_way": 10, "min_n": 5, "val_n": [10, 5], "k_shot": 5, "min_k": 1, "val_k": [1, 3, 5], "q_query": 1, "fs_task_num": 1, "class_split_ratio": None, },
+            "mode": {"train": 0, "valid":1, "test":2},
+            "eval_set_constructs": [
+                {
+                    "stage": "valid",
+                },
+                {
+                    "stage": "test",
+                },
+            ],
+            "eval_metric": "acc",
+            "eval_func": "classification_single_func",
+            "train_only": False,
+            "eval_only": False,
+            "class_emb_flag": False,
+            "random_flag": True,
+    },
+    "fb_zs": {
+            "dataset_name": "FB15K237",
+            "task_level": "link",
+            "construct": "ConstructLPFSZS",
+            "args": {"walk_length": None, "n_way": 10, "min_n": 5, "val_n": [10, 5], "k_shot": 0, "min_k": 0, "val_k": [0], "q_query": 1, "fs_task_num": 1, "class_split_ratio": None, },
+            "mode": {"train": 0, "valid":1, "test":2},
+            "eval_set_constructs": [
+                {
+                    "stage": "valid",
+                },
+                {
+                    "stage": "test",
+                },
+            ],
+            "eval_metric": "acc",
+            "eval_func": "classification_single_func",
+            "train_only": False,
+            "eval_only": False,
+            "class_emb_flag": True,
+            "random_flag": True,
+    },
+    "wn_fs": {
+            "dataset_name": "WN18RR",
+            "task_level": "link",
+            "construct": "ConstructLPFSZS",
+            "args": {"walk_length": None, "n_way": 10, "min_n": 5, "val_n": [10, 5], "k_shot": 5, "min_k": 1, "val_k": [1, 3, 5], "q_query": 1, "fs_task_num": 1, "class_split_ratio": [0, 0, 11], },
+            "mode": {"valid":2, "test":2},
+            "eval_set_constructs": [
+                {
+                    "stage": "valid",
+                },
+                {
+                    "stage": "test",
+                },
+            ],
+            "eval_metric": "acc",
+            "eval_func": "classification_single_func",
+            "train_only": False,
+            "eval_only": True,
+            "class_emb_flag": False,
+    },
+    "wn_zs": {
+            "dataset_name": "WN18RR",
+            "task_level": "link",
+            "construct": "ConstructLPFSZS",
+            "args": {"walk_length": None, "n_way": 10, "min_n": 5, "val_n": [10, 5], "k_shot": 0, "min_k": 0, "val_k": [0], "q_query": 1, "fs_task_num": 1, "class_split_ratio": [0, 0, 11], },
+            "mode": {"valid":2, "test":2},
+            "eval_set_constructs": [
+                {
+                    "stage": "valid",
+                },
+                {
+                    "stage": "test",
+                },
+            ],
+            "eval_metric": "acc",
+            "eval_func": "classification_single_func",
+            "train_only": False,
+            "eval_only": True,
+            "class_emb_flag": True,
+    },
 }
 
 
@@ -666,3 +923,131 @@ class TaskConstructor:
             "test": self.test_dm_set,
         }
         return text_dataset
+
+
+class LowResourceTaskConstructor(TaskConstructor):
+    def __init__(self, tasks, encoder, batch_size=3, sample_size=-1):
+        self.tasks = tasks
+        self.encoder = encoder
+        self.batch_size = batch_size
+        self.sample_size = sample_size
+        with open('data/low_resource_split.json', 'r') as f:
+            self.lr_class_split = json.load(f)
+
+        self.dataset = {}
+        self.datamanager = {}
+        self.edges = {}
+        self.train_set = []
+        self.valid_dm_set = []
+        self.test_dm_set = []
+
+        for task in self.tasks:
+            # get task config
+            config = task_config_lookup[task]
+            data = config["dataset_name"]
+            if data not in self.dataset and data in name2dataset:
+                self.dataset[data] = name2dataset[data](
+                    data, sentence_encoder=encoder
+                )
+            g = self.get_node_graph(self.dataset[data]) if config["task_level"] == "node" else self.get_link_graph(self.dataset[data], data, self.lr_class_split.get(data)) if config["task_level"] == "link" else None
+
+            args = config["args"]
+            if data in self.edges:
+                args["edges"] = self.edges[data]
+            if data not in self.datamanager and data in name2dataset:
+                self.datamanager[data] = FewShotDataManager(g, args["n_way"], args["k_shot"], args["q_query"], class_split_ratio=args["class_split_ratio"], class_split_lst=self.lr_class_split.get(data))
+
+            if not config["eval_only"]:
+                train_data = globals()[config["construct"]](
+                    g,
+                    self.datamanager[data],
+                    n=args["min_n"],
+                    k=args["min_k"],
+                    split_name=config["mode"]["train"],
+                    random_flag=config["random_flag"],
+                    train_flag=True,
+                    class_emb_flag=config["class_emb_flag"],
+                    **args,
+                )
+                self.train_set.append(train_data)
+
+            if not config["train_only"]:
+                for eval_construct_config in config["eval_set_constructs"]:
+                    if "args" in eval_construct_config:
+                        eval_args = eval_construct_config["args"]
+                    else:
+                        eval_args = config["args"]
+
+                    if "construct" in eval_construct_config:
+                        construct = globals()[eval_construct_config["construct"]]
+                    else:
+                        construct = globals()[config["construct"]]
+                    eval_data = [
+                        construct(
+                            g,
+                            self.datamanager[data],
+                            n=n,
+                            k=k,
+                            split_name=config["mode"][eval_construct_config["stage"]],
+                            state_name=f'{eval_construct_config["stage"]}_fs{n}{k}_{data}',
+                            eval_metric=config["eval_metric"],
+                            eval_func=globals()[config["eval_func"]],
+                            class_emb_flag=config["class_emb_flag"],
+                            **eval_args,
+                        )
+                        for n in eval_args["val_n"]
+                        for k in eval_args["val_k"]
+                    ]
+
+                    if eval_construct_config["stage"] == "valid":
+                        self.valid_dm_set += eval_data
+                    else:
+                        self.test_dm_set += eval_data
+
+    def get_node_graph(self, dataset):
+        g = dataset.data
+        g.x = g.x_text_feat
+        return g
+
+    def get_link_graph(self, dataset, data, class_split_lst=None):
+        g = dataset.data
+        g.x = g.x_text_feat
+
+        if data not in self.edges and data in name2dataset:
+            self.edges[data] = {}
+            converted_triplet = dataset.get_idx_split()
+            edges = torch.cat(
+                [
+                    torch.tensor(converted_triplet["train"][0]).T,
+                    torch.tensor(converted_triplet["valid"][0]).T,
+                    torch.tensor(converted_triplet["test"][0]).T,
+                ],
+                dim=-1,
+            )
+            self.edges[data]["edges"] = edges
+            self.edges[data]["fs_edges"] = [[], [], edges]
+            edge_labels = torch.cat(
+                [
+                    torch.tensor(converted_triplet["train"][1]),
+                    torch.tensor(converted_triplet["valid"][1]),
+                    torch.tensor(converted_triplet["test"][1]),
+                ]
+            )
+            self.edges[data]["edge_labels"] = edge_labels
+            self.edges[data]["fs_edge_types"] = [[], [], edge_labels]
+            if class_split_lst is not None:
+                fs_edges = []
+                fs_edge_types = []
+                for classes in class_split_lst:
+                    fs_mask = torch.tensor(
+                        [item in classes for item in edge_labels]
+                    )
+                    fs_edges.append(edges[:, fs_mask])
+                    fs_edge_types.append(edge_labels[fs_mask])
+                self.edges[data]["fs_edges"] = fs_edges
+                self.edges[data]["fs_edge_types"] = fs_edge_types
+
+        g.edge_index = self.edges[data]["edges"]
+        g.y = self.edges[data]["edge_labels"]
+        return g
+
