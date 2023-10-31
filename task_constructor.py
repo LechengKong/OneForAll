@@ -168,7 +168,7 @@ def ConstructNodeCls(
         split[split_name],
         prompt_feat=text_g.prompt_text_feat,
         to_undirected=True,
-        trim_class_func=to_bin_cls_func,
+        process_label_func=to_bin_cls_func,
         walk_length=kwargs["walk_length"],
     )
 
@@ -188,7 +188,7 @@ def ConstructLinkCls(
         to_undirected=True,
         hop=3,
         remove_edge=kwargs["remove_edge"],
-        trim_class_func=to_bin_cls_func,
+        process_label_func=to_bin_cls_func,
         walk_length=kwargs["walk_length"],
     )
 
@@ -204,7 +204,7 @@ def ConstructKG(name, dataset, split, split_name, to_bin_cls_func, **kwargs):
         to_undirected=True,
         hop=2,
         remove_edge=kwargs["remove_edge"],
-        trim_class_func=to_bin_cls_func,
+        process_label_func=to_bin_cls_func,
         walk_length=kwargs["walk_length"],
     )
 
@@ -219,7 +219,7 @@ def ConstructMolCls(
         dataset.prompt_edge_feat,
         dataset.prompt_text_feat,
         split[split_name],
-        trim_class_func=to_bin_cls_func,
+        process_label_func=to_bin_cls_func,
         single_prompt_edge=True,
         walk_length=kwargs["walk_length"],
     )
@@ -236,7 +236,7 @@ def ConstructMolFSTrain(
         dataset.prompt_edge_feat,
         dataset.prompt_text_feat,
         split[split_name],
-        trim_class_func=to_bin_cls_func,
+        process_label_func=to_bin_cls_func,
         single_prompt_edge=True,
         walk_length=kwargs["walk_length"],
         class_ind=classes,
@@ -817,12 +817,43 @@ task_config_lookup = {
             "eval_only": True,
             "class_emb_flag": True,
     },
+    "chemblpre_fs": {
+        "dataset_name": "chemblpre",
+        "dataset_splitter": "MolSplitter",
+        "preprocess": None,
+        "construct": "ConstructMolCls",
+        "args": {"walk_length": None},
+        "process_label_func": "process_multi_label",
+        "eval_set_constructs": [
+            {
+                "stage": "valid",
+                "split_name": "valid",
+                "process_label_func": "none_process_label",
+            },
+            {
+                "stage": "test",
+                "split_name": "test",
+                "process_label_func": "none_process_label",
+            },
+            {
+                "stage": "test",
+                "split_name": "train",
+                "process_label_func": "none_process_label",
+            },
+        ],
+        "eval_metric": "apr",
+        "eval_func": "binary_apr_func",
+        "num_classes": 1296,
+        "train_only": True,
+        "eval_only": False,
+    },
 }
 
 
 class TaskConstructor:
-    def __init__(self, tasks, encoder, batch_size=256, sample_size=-1):
+    def __init__(self, tasks, encoder, task_config_lookup, batch_size=256, sample_size=-1):
         self.tasks = tasks
+        self.task_config_lookup = task_config_lookup
         self.batch_size = batch_size
         self.sample_size = sample_size
         self.dataset = {}
@@ -831,7 +862,7 @@ class TaskConstructor:
         self.test_dm_set = []
 
         for task in self.tasks:
-            config = task_config_lookup[task]
+            config = self.task_config_lookup[task]
             data = config["dataset_name"]
             if data not in self.dataset and data in name2dataset:
                 self.dataset[data] = name2dataset[data](
@@ -949,27 +980,13 @@ class LowResourceTaskConstructor(TaskConstructor):
                 self.dataset[data] = name2dataset[data](
                     data, sentence_encoder=encoder
                 )
-            g = self.get_node_graph(self.dataset[data]) if config["task_level"] == "node" else self.get_link_graph(self.dataset[data], data, self.lr_class_split.get(data)) if config["task_level"] == "link" else None
 
-            args = config["args"]
-            if data in self.edges:
-                args["edges"] = self.edges[data]
-            if data not in self.datamanager and data in name2dataset:
-                self.datamanager[data] = FewShotDataManager(g, args["n_way"], args["k_shot"], args["q_query"], class_split_ratio=args["class_split_ratio"], class_split_lst=self.lr_class_split.get(data))
+            # save train data to self.train_set
+            if config["task_level"] == "node" or config["task_level"] == "link":
+                g = self.get_lr_traindata(data, config)
+            else:
+                split, global_data = self.get_traindata(data, config, task)
 
-            if not config["eval_only"]:
-                train_data = globals()[config["construct"]](
-                    g,
-                    self.datamanager[data],
-                    n=args["min_n"],
-                    k=args["min_k"],
-                    split_name=config["mode"]["train"],
-                    random_flag=config["random_flag"],
-                    train_flag=True,
-                    class_emb_flag=config["class_emb_flag"],
-                    **args,
-                )
-                self.train_set.append(train_data)
 
             if not config["train_only"]:
                 for eval_construct_config in config["eval_set_constructs"]:
@@ -982,22 +999,11 @@ class LowResourceTaskConstructor(TaskConstructor):
                         construct = globals()[eval_construct_config["construct"]]
                     else:
                         construct = globals()[config["construct"]]
-                    eval_data = [
-                        construct(
-                            g,
-                            self.datamanager[data],
-                            n=n,
-                            k=k,
-                            split_name=config["mode"][eval_construct_config["stage"]],
-                            state_name=f'{eval_construct_config["stage"]}_fs{n}{k}_{data}',
-                            eval_metric=config["eval_metric"],
-                            eval_func=globals()[config["eval_func"]],
-                            class_emb_flag=config["class_emb_flag"],
-                            **eval_args,
-                        )
-                        for n in eval_args["val_n"]
-                        for k in eval_args["val_k"]
-                    ]
+
+                    if config["task_level"] == "node" or config["task_level"] == "link":
+                        eval_data = self.get_lr_evaldata(construct, data, g, config, eval_construct_config, eval_args)
+                    else:
+                        eval_data = self.get_evaldata(construct, data, task, split, global_data, config, eval_construct_config, eval_args)
 
                     if eval_construct_config["stage"] == "valid":
                         self.valid_dm_set += eval_data
@@ -1050,4 +1056,100 @@ class LowResourceTaskConstructor(TaskConstructor):
         g.edge_index = self.edges[data]["edges"]
         g.y = self.edges[data]["edge_labels"]
         return g
+
+    def get_lr_traindata(self, data, config):
+        g = self.get_node_graph(self.dataset[data]) if config["task_level"] == "node" else self.get_link_graph(
+            self.dataset[data], data, self.lr_class_split.get(data)) if config["task_level"] == "link" else None
+
+        args = config["args"]
+        if data in self.edges:
+            args["edges"] = self.edges[data]
+        if data not in self.datamanager and data in name2dataset:
+            self.datamanager[data] = FewShotDataManager(g, args["n_way"], args["k_shot"], args["q_query"], class_split_ratio=args["class_split_ratio"], class_split_lst=self.lr_class_split.get(data))
+
+        if not config["eval_only"]:
+            train_data = globals()[config["construct"]](
+                g,
+                self.datamanager[data],
+                n=args["min_n"],
+                k=args["min_k"],
+                split_name=config["mode"]["train"],
+                random_flag=config["random_flag"],
+                train_flag=True,
+                class_emb_flag=config["class_emb_flag"],
+                **args,
+            )
+            self.train_set.append(train_data)
+        return g
+
+    def get_lr_evaldata(self, construct, data, g, config, eval_construct_config, eval_args):
+        eval_data = [
+            construct(
+                g,
+                self.datamanager[data],
+                n=n,
+                k=k,
+                split_name=config["mode"][eval_construct_config["stage"]],
+                state_name=f'{eval_construct_config["stage"]}_fs{n}{k}_{data}',
+                eval_metric=config["eval_metric"],
+                eval_func=globals()[config["eval_func"]],
+                class_emb_flag=config["class_emb_flag"],
+                **eval_args,
+            )
+            for n in eval_args["val_n"]
+            for k in eval_args["val_k"]
+        ]
+        return eval_data
+
+    def get_traindata(self, data, config, task):
+        split = globals()[config["dataset_splitter"]](self.dataset[data])
+        if config["preprocess"] is not None:
+            global_data = globals()[config["preprocess"]](
+                self.dataset[data], split
+            )
+        else:
+            global_data = None
+
+        train_data = globals()[config["construct"]](
+            task,
+            self.dataset[data],
+            split,
+            "train",
+            globals()[config["process_label_func"]],
+            global_data=global_data,
+            **config["args"],
+        )
+        self.train_set.append(train_data)
+        return split, global_data
+
+    def get_evaldata(self, construct, data, task, split, global_data, config, eval_construct_config, eval_args):
+        if "process_label_func" in eval_construct_config:
+            trim_class_func = globals()[
+                eval_construct_config["process_label_func"]
+            ]
+        else:
+            trim_class_func = globals()[config["process_label_func"]]
+
+        eval_data = construct(
+            task,
+            self.dataset[data],
+            split,
+            eval_construct_config["split_name"],
+            trim_class_func,
+            global_data=global_data,
+            **eval_args,
+        )
+
+        dm_data = make_data(
+            data,
+            eval_data,
+            eval_construct_config["split_name"],
+            config["eval_metric"],
+            globals()[config["eval_func"]],
+            config["num_classes"],
+            batch_size=self.batch_size,
+            sample_size=self.sample_size,
+        )
+
+        return dm_data
 
