@@ -43,7 +43,7 @@ from gp.lightning.metric import flat_binary_func_fs
 from gp.utils.utils import SmartTimer
 from scipy.sparse import csr_array
 
-from task_constructor import TaskConstructor
+from task_constructor import TaskConstructor, UnifiedTaskConstructor
 
 
 def main(params):
@@ -51,7 +51,7 @@ def main(params):
 
     task_config_lookup = load_yaml(os.path.join(os.path.dirname(__file__), "configs", "task_config.yaml"))
 
-    tasks = TaskConstructor(["arxiv"], encoder, task_config_lookup)
+    tasks = UnifiedTaskConstructor(["fb_fs"], encoder, task_config_lookup, batch_size=3)
 
 
     out_dim = 768 + (params.rwpe if params.rwpe is not None else 0)
@@ -208,5 +208,4 @@ if __name__ == "__main__":
 
     torch.set_float32_matmul_precision("high")
     params.log_project = "full_cdm"
-    params.num_workers = 0
     main(params)

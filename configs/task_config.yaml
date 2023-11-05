@@ -243,13 +243,10 @@ E2E-graph: &E2E-graph
   eval_set_constructs:
     - stage: valid
       split_name: valid
-      process_label_func: none_process_label
     - stage: test
       split_name: test
-      process_label_func: none_process_label
     - stage: test
       split_name: train
-      process_label_func: none_process_label
   train_only: False
   eval_only: False
 
@@ -260,18 +257,29 @@ chemblpre: &chemblpre
   eval_metric: apr
   eval_func: binary_apr_func
   num_classes: 1296
+  train_only: True
 
 chempcba: &chempcba
   <<: *E2E-graph
-  dataset: chempcba
+  dataset_name: chempcba
   process_label_func: process_multi_label
+  eval_set_constructs:
+    - stage: valid
+      split_name: valid
+      process_label_func: eval_process_label
+    - stage: test
+      split_name: test
+      process_label_func: eval_process_label
+    - stage: test
+      split_name: train
+      process_label_func: eval_process_label
   eval_metric: apr
   eval_func: binary_apr_func
   num_classes: 128
 
 chemhiv: &chemhiv
   <<: *E2E-graph
-  dataset: chemhiv
+  dataset_name: chemhiv
   process_label_func: process_pth_label
   eval_metric: auc
   eval_func: binary_auc_func

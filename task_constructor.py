@@ -46,8 +46,8 @@ from utils import (
     binary_single_auc_func,
     classification_single_func,
 )
-import os
-os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+# import os
+# os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 name2dataset = {
     "arxiv": ArxivOFADataset,
@@ -184,7 +184,7 @@ def ConstructLinkCls(
         train_graph,
         train_graph.edge_label_feat,
         edges.T[split[split_name]].numpy(),
-        prompt_feat=train_graph.prompt_text_edge_feat,
+        prompt_feat=train_graph.prompt_node_edge_feat,
         to_undirected=True,
         hop=3,
         remove_edge=kwargs["remove_edge"],
@@ -243,14 +243,16 @@ def ConstructMolFSTrain(
     )
 
 def ConstructNCFSZS(
-        dataset, data_manager, n, k, split_name, random_flag=False, state_name=None, eval_metric=None, eval_func=None, train_flag=False, adj=None, total_task_num=50, class_emb_flag=False, undirected_flag=True,  **kwargs
+        dataset, data_manager, n, k, split_name, config, state_name=None, eval_metric=None, eval_func=None, train_flag=False, adj=None, total_task_num=50, undirected_flag=True,  **kwargs
 ):
-    if class_emb_flag:
+    if config["class_emb_flag"]:
         class_emb = dataset.label_text_feat
     else:
         class_emb = dataset.prompt_text_feat.repeat(
             len(dataset.label_text_feat), 1
         )
+    random_flag = config["random_flag"] if split_name == "train" else None
+    split_name=config["mode"][split_name]
     data_class = FewShotNCDataset if kwargs["k_shot"]>0 else ZeroShotNCDataset
     ofa_data = data_class(
         pyg_graph=dataset,
@@ -285,14 +287,16 @@ def ConstructNCFSZS(
         )
 
 def ConstructLPFSZS(
-        dataset, data_manager, n, k, split_name, random_flag=False, state_name=None, eval_metric=None, eval_func=None, train_flag=False, adj=None, total_task_num=50, class_emb_flag=False, undirected_flag=True,  **kwargs
+        dataset, data_manager, n, k, split_name, config, state_name=None, eval_metric=None, eval_func=None, train_flag=False, adj=None, total_task_num=50, undirected_flag=True,  **kwargs
 ):
-    if class_emb_flag:
+    if config["class_emb_flag"]:
         class_emb = dataset.edge_label_feat
     else:
         class_emb = dataset.prompt_text_feat.repeat(
             len(dataset.edge_label_feat), 1
         )
+    random_flag = config["random_flag"] if split_name == "train" else None
+    split_name = config["mode"][split_name]
     data_class = FewShotKGDataset if kwargs["k_shot"]>0 else ZeroShotKGDataset
     ofa_data = data_class(
         pyg_graph=dataset,
@@ -333,9 +337,8 @@ def ConstructLPFSZS(
 
 def process_pth_label(embs, label):
     binary_rep = torch.zeros((1, len(embs)))
-    binary_rep[0, label] = 1
+    binary_rep[0, label.squeeze().to(torch.long)] = 1
     return label.view(1, -1), embs, binary_rep
-
 
 def process_multi_label(embs, label):
     valid_idx = label == label
@@ -346,6 +349,12 @@ def process_multi_label(embs, label):
         label[:, valid_idx.view(-1)].detach().clone(),
     )
 
+def eval_process_label(embs, classes):
+    return (
+        torch.tensor([[0]]),
+        embs,
+        classes,
+    )
 
 def process_int_label(embs, label):
     binary_rep = torch.zeros((1, len(embs)))
@@ -608,17 +617,17 @@ task_config_lookup = {
             {
                 "stage": "valid",
                 "split_name": "valid",
-                "process_label_func": "none_process_label",
+                "process_label_func": "eval_process_label",
             },
             {
                 "stage": "test",
                 "split_name": "test",
-                "process_label_func": "none_process_label",
+                "process_label_func": "eval_process_label",
             },
             {
                 "stage": "test",
                 "split_name": "train",
-                "process_label_func": "none_process_label",
+                "process_label_func": "eval_process_label",
             },
         ],
         "eval_metric": "apr",
@@ -636,17 +645,14 @@ task_config_lookup = {
             {
                 "stage": "valid",
                 "split_name": "valid",
-                "process_label_func": "none_process_label",
             },
             {
                 "stage": "test",
                 "split_name": "test",
-                "process_label_func": "none_process_label",
             },
             {
                 "stage": "test",
                 "split_name": "train",
-                "process_label_func": "none_process_label",
             },
         ],
         "eval_metric": "auc",
@@ -851,9 +857,8 @@ task_config_lookup = {
 
 
 class TaskConstructor:
-    def __init__(self, tasks, encoder, task_config_lookup, batch_size=256, sample_size=-1):
+    def __init__(self, tasks, encoder, batch_size=256, sample_size=-1):
         self.tasks = tasks
-        self.task_config_lookup = task_config_lookup
         self.batch_size = batch_size
         self.sample_size = sample_size
         self.dataset = {}
@@ -862,7 +867,7 @@ class TaskConstructor:
         self.test_dm_set = []
 
         for task in self.tasks:
-            config = self.task_config_lookup[task]
+            config = task_config_lookup[task]
             data = config["dataset_name"]
             if data not in self.dataset and data in name2dataset:
                 self.dataset[data] = name2dataset[data](
@@ -956,10 +961,11 @@ class TaskConstructor:
         return text_dataset
 
 
-class LowResourceTaskConstructor(TaskConstructor):
-    def __init__(self, tasks, encoder, batch_size=3, sample_size=-1):
+class UnifiedTaskConstructor:
+    def __init__(self, tasks, encoder, task_config_lookup, batch_size=256, sample_size=-1):
         self.tasks = tasks
         self.encoder = encoder
+        self.task_config_lookup = task_config_lookup
         self.batch_size = batch_size
         self.sample_size = sample_size
         with open('data/low_resource_split.json', 'r') as f:
@@ -973,136 +979,26 @@ class LowResourceTaskConstructor(TaskConstructor):
         self.test_dm_set = []
 
         for task in self.tasks:
-            # get task config
-            config = task_config_lookup[task]
-            data = config["dataset_name"]
-            if data not in self.dataset and data in name2dataset:
-                self.dataset[data] = name2dataset[data](
-                    data, sentence_encoder=encoder
-                )
+            self.construct_task(task)
 
-            # save train data to self.train_set
-            if config["task_level"] == "node" or config["task_level"] == "link":
-                g = self.get_lr_traindata(data, config)
-            else:
-                split, global_data = self.get_traindata(data, config, task)
+    def construct_task(self, task):
+        config = self.task_config_lookup[task]
+        data = config["dataset_name"]
+        assert data in name2dataset
+        split, global_data, g, args = self.preprocess(config, data)
+        self.get_train_data(task, config, data, split, global_data, g, args)
+        self.get_eval_data(task, config, data, split, global_data, g, args)
 
-
-            if not config["train_only"]:
-                for eval_construct_config in config["eval_set_constructs"]:
-                    if "args" in eval_construct_config:
-                        eval_args = eval_construct_config["args"]
-                    else:
-                        eval_args = config["args"]
-
-                    if "construct" in eval_construct_config:
-                        construct = globals()[eval_construct_config["construct"]]
-                    else:
-                        construct = globals()[config["construct"]]
-
-                    if config["task_level"] == "node" or config["task_level"] == "link":
-                        eval_data = self.get_lr_evaldata(construct, data, g, config, eval_construct_config, eval_args)
-                    else:
-                        eval_data = self.get_evaldata(construct, data, task, split, global_data, config, eval_construct_config, eval_args)
-
-                    if eval_construct_config["stage"] == "valid":
-                        self.valid_dm_set += eval_data
-                    else:
-                        self.test_dm_set += eval_data
-
-    def get_node_graph(self, dataset):
-        g = dataset.data
-        g.x = g.x_text_feat
-        return g
-
-    def get_link_graph(self, dataset, data, class_split_lst=None):
-        g = dataset.data
-        g.x = g.x_text_feat
-
-        if data not in self.edges and data in name2dataset:
-            self.edges[data] = {}
-            converted_triplet = dataset.get_idx_split()
-            edges = torch.cat(
-                [
-                    torch.tensor(converted_triplet["train"][0]).T,
-                    torch.tensor(converted_triplet["valid"][0]).T,
-                    torch.tensor(converted_triplet["test"][0]).T,
-                ],
-                dim=-1,
-            )
-            self.edges[data]["edges"] = edges
-            self.edges[data]["fs_edges"] = [[], [], edges]
-            edge_labels = torch.cat(
-                [
-                    torch.tensor(converted_triplet["train"][1]),
-                    torch.tensor(converted_triplet["valid"][1]),
-                    torch.tensor(converted_triplet["test"][1]),
-                ]
-            )
-            self.edges[data]["edge_labels"] = edge_labels
-            self.edges[data]["fs_edge_types"] = [[], [], edge_labels]
-            if class_split_lst is not None:
-                fs_edges = []
-                fs_edge_types = []
-                for classes in class_split_lst:
-                    fs_mask = torch.tensor(
-                        [item in classes for item in edge_labels]
-                    )
-                    fs_edges.append(edges[:, fs_mask])
-                    fs_edge_types.append(edge_labels[fs_mask])
-                self.edges[data]["fs_edges"] = fs_edges
-                self.edges[data]["fs_edge_types"] = fs_edge_types
-
-        g.edge_index = self.edges[data]["edges"]
-        g.y = self.edges[data]["edge_labels"]
-        return g
-
-    def get_lr_traindata(self, data, config):
-        g = self.get_node_graph(self.dataset[data]) if config["task_level"] == "node" else self.get_link_graph(
-            self.dataset[data], data, self.lr_class_split.get(data)) if config["task_level"] == "link" else None
-
+    def preprocess(self, config, data):
         args = config["args"]
-        if data in self.edges:
-            args["edges"] = self.edges[data]
-        if data not in self.datamanager and data in name2dataset:
-            self.datamanager[data] = FewShotDataManager(g, args["n_way"], args["k_shot"], args["q_query"], class_split_ratio=args["class_split_ratio"], class_split_lst=self.lr_class_split.get(data))
-
-        if not config["eval_only"]:
-            train_data = globals()[config["construct"]](
-                g,
-                self.datamanager[data],
-                n=args["min_n"],
-                k=args["min_k"],
-                split_name=config["mode"]["train"],
-                random_flag=config["random_flag"],
-                train_flag=True,
-                class_emb_flag=config["class_emb_flag"],
-                **args,
+        if data not in self.dataset:
+            self.dataset[data] = name2dataset[data](
+                data, sentence_encoder=self.encoder
             )
-            self.train_set.append(train_data)
-        return g
 
-    def get_lr_evaldata(self, construct, data, g, config, eval_construct_config, eval_args):
-        eval_data = [
-            construct(
-                g,
-                self.datamanager[data],
-                n=n,
-                k=k,
-                split_name=config["mode"][eval_construct_config["stage"]],
-                state_name=f'{eval_construct_config["stage"]}_fs{n}{k}_{data}',
-                eval_metric=config["eval_metric"],
-                eval_func=globals()[config["eval_func"]],
-                class_emb_flag=config["class_emb_flag"],
-                **eval_args,
-            )
-            for n in eval_args["val_n"]
-            for k in eval_args["val_k"]
-        ]
-        return eval_data
-
-    def get_traindata(self, data, config, task):
-        split = globals()[config["dataset_splitter"]](self.dataset[data])
+        # only for e2e
+        dataset_splitter = config.get("dataset_splitter")
+        split = globals()[dataset_splitter](self.dataset[data]) if dataset_splitter else None
         if config["preprocess"] is not None:
             global_data = globals()[config["preprocess"]](
                 self.dataset[data], split
@@ -1110,19 +1006,79 @@ class LowResourceTaskConstructor(TaskConstructor):
         else:
             global_data = None
 
-        train_data = globals()[config["construct"]](
-            task,
-            self.dataset[data],
-            split,
-            "train",
-            globals()[config["process_label_func"]],
-            global_data=global_data,
-            **config["args"],
-        )
-        self.train_set.append(train_data)
-        return split, global_data
+        # only for few-shot and zero-shot
+        if "lr" in config["task_level"]:
+            g = self.get_graph(data, config["task_level"], self.lr_class_split.get(data))
+            if data in self.edges:
+                args["edges"] = self.edges[data]
+            if data not in self.datamanager:
+                self.datamanager[data] = FewShotDataManager(g, args["n_way"], args["k_shot"], args["q_query"], class_split_ratio=args["class_split_ratio"], class_split_lst=self.lr_class_split.get(data))
+        else:
+            g = None
 
-    def get_evaldata(self, construct, data, task, split, global_data, config, eval_construct_config, eval_args):
+        return split, global_data, g, args
+
+    def get_train_data(self, task, config, data, split, global_data, g, args):
+        if not config["eval_only"]:
+            train_data = globals()[config["construct"]](
+                name=task,
+                dataset=g if g else self.dataset[data],
+                data_manager=self.datamanager.get(data),
+                split=split,
+                split_name="train",
+                to_bin_cls_func=globals()[config["process_label_func"]] if config.get("process_label_func") else None,
+                global_data=global_data,
+                n=args.get("min_n"),
+                k=args.get("min_k"),
+                train_flag=True,
+                config=config,
+                **args,
+            )
+            self.train_set.append(train_data)
+
+    def get_eval_data(self, task, config, data, split, global_data, g, args):
+        if not config["train_only"]:
+            for eval_construct_config in config["eval_set_constructs"]:
+                if "args" in eval_construct_config:
+                    eval_args = eval_construct_config["args"]
+                else:
+                    eval_args = args
+
+                if "construct" in eval_construct_config:
+                    construct = globals()[eval_construct_config["construct"]]
+                else:
+                    construct = globals()[config["construct"]]
+
+                if "lr" in config["task_level"]:
+                    eval_data = self.get_lr_eval_data(construct, data, g, config, eval_construct_config, eval_args)
+                else:
+                    eval_data = self.get_e2e_eval_data(construct, data, task, split, global_data, config, eval_construct_config, eval_args)
+
+                if eval_construct_config["stage"] == "valid":
+                    self.valid_dm_set += eval_data
+                else:
+                    self.test_dm_set += eval_data
+
+    def get_lr_eval_data(self, construct, data, g, config, eval_construct_config, eval_args):
+        eval_data = [
+            construct(
+                dataset=g,
+                data_manager=self.datamanager[data],
+                n=n,
+                k=k,
+                split_name=eval_construct_config["stage"],
+                config=config,
+                state_name=f'{eval_construct_config["stage"]}_fs{n}{k}_{data}',
+                eval_metric=config["eval_metric"],
+                eval_func=globals()[config["eval_func"]],
+                **eval_args,
+            )
+            for n in eval_args["val_n"]
+            for k in eval_args["val_k"]
+        ]
+        return eval_data
+
+    def get_e2e_eval_data(self, construct, data, task, split, global_data, config, eval_construct_config, eval_args):
         if "process_label_func" in eval_construct_config:
             trim_class_func = globals()[
                 eval_construct_config["process_label_func"]
@@ -1139,7 +1095,6 @@ class LowResourceTaskConstructor(TaskConstructor):
             global_data=global_data,
             **eval_args,
         )
-
         dm_data = make_data(
             data,
             eval_data,
@@ -1150,6 +1105,80 @@ class LowResourceTaskConstructor(TaskConstructor):
             batch_size=self.batch_size,
             sample_size=self.sample_size,
         )
+        return [dm_data]
 
-        return dm_data
+    def get_graph(self, data, task_level, class_split_lst=None):
+        # preprocess graph/edges for few-shot and zero-shot tasks
+        dataset = self.dataset[data]
+        g = dataset.data
+        g.x = g.x_text_feat
+
+        if "link" in task_level:
+            if data not in self.edges:
+                self.edges[data] = {}
+                converted_triplet = dataset.get_idx_split()
+                edges = torch.cat(
+                    [
+                        torch.tensor(converted_triplet["train"][0]).T,
+                        torch.tensor(converted_triplet["valid"][0]).T,
+                        torch.tensor(converted_triplet["test"][0]).T,
+                    ],
+                    dim=-1,
+                )
+                self.edges[data]["edges"] = edges
+                self.edges[data]["fs_edges"] = [[], [], edges]
+                edge_labels = torch.cat(
+                    [
+                        torch.tensor(converted_triplet["train"][1]),
+                        torch.tensor(converted_triplet["valid"][1]),
+                        torch.tensor(converted_triplet["test"][1]),
+                    ]
+                )
+                self.edges[data]["edge_labels"] = edge_labels
+                self.edges[data]["fs_edge_types"] = [[], [], edge_labels]
+                if class_split_lst is not None:
+                    fs_edges = []
+                    fs_edge_types = []
+                    for classes in class_split_lst:
+                        fs_mask = torch.tensor(
+                            [item in classes for item in edge_labels]
+                        )
+                        fs_edges.append(edges[:, fs_mask])
+                        fs_edge_types.append(edge_labels[fs_mask])
+                    self.edges[data]["fs_edges"] = fs_edges
+                    self.edges[data]["fs_edge_types"] = fs_edge_types
+
+            g.edge_index = self.edges[data]["edges"]
+            g.y = self.edges[data]["edge_labels"]
+
+        return g
+
+    def make_train_data(self, multiple, min_ratio):
+        train_data = MultiDataset(
+            self.train_set,
+            dataset_multiple=multiple,
+            patience=3,
+            window_size=5,
+            min_ratio=min_ratio,
+        )
+        return train_data
+
+    def make_full_dm_list(self, multiple, min_ratio, train_data=None):
+        text_dataset = {
+            "train": DataWithMeta(
+                self.make_train_data(multiple, min_ratio)
+                if not train_data
+                else train_data,
+                self.batch_size,
+                sample_size=self.sample_size,
+            ),
+            "val": self.valid_dm_set,
+            "test": self.test_dm_set,
+        }
+        return text_dataset
+
+
+
+
+
 
