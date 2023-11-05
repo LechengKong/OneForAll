@@ -21,6 +21,7 @@ def flat_binary_func(func, output, batch):
     valid_ind = labels == labels
     return func(output.view(-1)[valid_ind], labels[valid_ind])
 
+
 def flat_binary_func_fs(func, output, batch):
     labels = batch.bin_labels
     valid_ind = labels == labels
@@ -60,9 +61,11 @@ def get_contrast_func(temprature, cl_mode):
 
     return contrast_loss_func
 
+
 def generation_func(loss, output, batch):
     y = batch.y.to(torch.long).view(-1)
     return loss(output, y)
+
 
 def BLEU_func(metric, output, batch):
     combine_texts = batch.combine_texts
@@ -258,9 +261,7 @@ class IdentityLoss(torch.nn.Module):
         return inputs
 
 
-def prepare_generation(
-    exp_name, eval_state=["test", "valid"], **kwargs
-):
+def prepare_generation(exp_name, eval_state=["test", "valid"], **kwargs):
     loss = IdentityLoss()
     evlter = BLEUScore()
     return EvalKit(
@@ -273,7 +274,6 @@ def prepare_generation(
         exp_prefix=exp_name,
         eval_state=eval_state,
     )
-
 
 
 available_metrics = {

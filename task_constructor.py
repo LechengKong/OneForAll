@@ -46,6 +46,7 @@ from utils import (
     binary_single_auc_func,
     classification_single_func,
 )
+
 # import os
 # os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
@@ -184,7 +185,7 @@ def ConstructLinkCls(
         train_graph,
         train_graph.edge_label_feat,
         edges.T[split[split_name]].numpy(),
-        prompt_feat=train_graph.prompt_node_edge_feat,
+        prompt_feat=train_graph.prompt_text_edge_feat,
         to_undirected=True,
         hop=3,
         remove_edge=kwargs["remove_edge"],
@@ -242,8 +243,22 @@ def ConstructMolFSTrain(
         class_ind=classes,
     )
 
+
 def ConstructNCFSZS(
-        dataset, data_manager, n, k, split_name, config, state_name=None, eval_metric=None, eval_func=None, train_flag=False, adj=None, total_task_num=50, undirected_flag=True,  **kwargs
+    dataset,
+    data_manager,
+    n,
+    k,
+    split_name,
+    config,
+    state_name=None,
+    eval_metric=None,
+    eval_func=None,
+    train_flag=False,
+    adj=None,
+    total_task_num=50,
+    undirected_flag=True,
+    **kwargs,
 ):
     if config["class_emb_flag"]:
         class_emb = dataset.label_text_feat
@@ -252,8 +267,10 @@ def ConstructNCFSZS(
             len(dataset.label_text_feat), 1
         )
     random_flag = config["random_flag"] if split_name == "train" else None
-    split_name=config["mode"][split_name]
-    data_class = FewShotNCDataset if kwargs["k_shot"]>0 else ZeroShotNCDataset
+    split_name = config["mode"][split_name]
+    data_class = (
+        FewShotNCDataset if kwargs["k_shot"] > 0 else ZeroShotNCDataset
+    )
     ofa_data = data_class(
         pyg_graph=dataset,
         class_emb=class_emb,
@@ -283,11 +300,25 @@ def ConstructNCFSZS(
             metric=eval_metric,
             state_name=state_name,
             classes=n,
-            meta_data={"eval_func": eval_func}
+            meta_data={"eval_func": eval_func},
         )
 
+
 def ConstructLPFSZS(
-        dataset, data_manager, n, k, split_name, config, state_name=None, eval_metric=None, eval_func=None, train_flag=False, adj=None, total_task_num=50, undirected_flag=True,  **kwargs
+    dataset,
+    data_manager,
+    n,
+    k,
+    split_name,
+    config,
+    state_name=None,
+    eval_metric=None,
+    eval_func=None,
+    train_flag=False,
+    adj=None,
+    total_task_num=50,
+    undirected_flag=True,
+    **kwargs,
 ):
     if config["class_emb_flag"]:
         class_emb = dataset.edge_label_feat
@@ -297,7 +328,9 @@ def ConstructLPFSZS(
         )
     random_flag = config["random_flag"] if split_name == "train" else None
     split_name = config["mode"][split_name]
-    data_class = FewShotKGDataset if kwargs["k_shot"]>0 else ZeroShotKGDataset
+    data_class = (
+        FewShotKGDataset if kwargs["k_shot"] > 0 else ZeroShotKGDataset
+    )
     ofa_data = data_class(
         pyg_graph=dataset,
         class_emb=class_emb,
@@ -330,15 +363,15 @@ def ConstructLPFSZS(
             metric=eval_metric,
             state_name=state_name,
             classes=n,
-            meta_data={"eval_func": eval_func}
+            meta_data={"eval_func": eval_func},
         )
-
 
 
 def process_pth_label(embs, label):
     binary_rep = torch.zeros((1, len(embs)))
     binary_rep[0, label.squeeze().to(torch.long)] = 1
-    return label.view(1, -1), embs, binary_rep
+    return label.view(1, -1).to(torch.long), embs, binary_rep
+
 
 def process_multi_label(embs, label):
     valid_idx = label == label
@@ -349,12 +382,14 @@ def process_multi_label(embs, label):
         label[:, valid_idx.view(-1)].detach().clone(),
     )
 
+
 def eval_process_label(embs, classes):
     return (
         torch.tensor([[0]]),
         embs,
         classes,
     )
+
 
 def process_int_label(embs, label):
     binary_rep = torch.zeros((1, len(embs)))
@@ -365,610 +400,21 @@ def process_int_label(embs, label):
 none_process_label = None
 
 
-task_config_lookup = {
-    "arxiv": {
-        "dataset_name": "arxiv",
-        "dataset_splitter": "ArxivSplitter",
-        "preprocess": None,
-        "construct": "ConstructNodeCls",
-        "args": {"walk_length": None},
-        "process_label_func": "process_pth_label",
-        "eval_set_constructs": [
-            {
-                "stage": "valid",
-                "split_name": "valid",
-            },
-            {
-                "stage": "test",
-                "split_name": "test",
-            },
-            {
-                "stage": "test",
-                "split_name": "train",
-            },
-        ],
-        "eval_metric": "acc",
-        "eval_func": "classification_func",
-        "num_classes": 40,
-    },
-    "cora_link": {
-        "dataset_name": "cora",
-        "dataset_splitter": "CiteLinkSplitter",
-        "preprocess": "LinkConstructGraph",
-        "construct": "ConstructLinkCls",
-        "args": {"remove_edge": True, "walk_length": None},
-        "process_label_func": "process_int_label",
-        "eval_set_constructs": [
-            {
-                "stage": "valid",
-                "split_name": "valid",
-                "args": {"remove_edge": False, "walk_length": None},
-            },
-            {
-                "stage": "test",
-                "split_name": "test",
-                "args": {"remove_edge": False, "walk_length": None},
-            },
-            {
-                "stage": "test",
-                "split_name": "train",
-                "args": {"remove_edge": True, "walk_length": None},
-            },
-        ],
-        "eval_metric": "auc",
-        "eval_func": "binary_auc_func",
-        "num_classes": 2,
-    },
-    "cora_node": {
-        "dataset_name": "cora",
-        "dataset_splitter": "CiteSplitter",
-        "preprocess": None,
-        "construct": "ConstructNodeCls",
-        "args": {"walk_length": None},
-        "process_label_func": "process_int_label",
-        "eval_set_constructs": [
-            {
-                "stage": "valid",
-                "split_name": "valid",
-            },
-            {
-                "stage": "test",
-                "split_name": "test",
-            },
-            {
-                "stage": "test",
-                "split_name": "train",
-            },
-        ],
-        "eval_metric": "acc",
-        "eval_func": "classification_func",
-        "num_classes": 7,
-    },
-    "pubmed_link": {
-        "dataset_name": "pubmed",
-        "dataset_splitter": "CiteLinkSplitter",
-        "preprocess": "LinkConstructGraph",
-        "construct": "ConstructLinkCls",
-        "args": {"remove_edge": True, "walk_length": None},
-        "process_label_func": "process_int_label",
-        "eval_set_constructs": [
-            {
-                "stage": "valid",
-                "split_name": "valid",
-                "args": {"remove_edge": False, "walk_length": None},
-            },
-            {
-                "stage": "test",
-                "split_name": "test",
-                "args": {"remove_edge": False, "walk_length": None},
-            },
-            {
-                "stage": "test",
-                "split_name": "train",
-                "args": {"remove_edge": True, "walk_length": None},
-            },
-        ],
-        "eval_metric": "auc",
-        "eval_func": "binary_auc_func",
-        "num_classes": 2,
-    },
-    "pubmed_node": {
-        "dataset_name": "pubmed",
-        "dataset_splitter": "CiteSplitter",
-        "preprocess": None,
-        "construct": "ConstructNodeCls",
-        "args": {"walk_length": None},
-        "process_label_func": "process_int_label",
-        "eval_set_constructs": [
-            {
-                "stage": "valid",
-                "split_name": "valid",
-            },
-            {
-                "stage": "test",
-                "split_name": "test",
-            },
-            {
-                "stage": "test",
-                "split_name": "train",
-            },
-        ],
-        "eval_metric": "acc",
-        "eval_func": "classification_func",
-        "num_classes": 3,
-    },
-    "WN18RR": {
-        "dataset_name": "WN18RR",
-        "dataset_splitter": "KGSplitter",
-        "preprocess": None,
-        "construct": "ConstructKG",
-        "args": {"remove_edge": True, "walk_length": None},
-        "process_label_func": "process_int_label",
-        "eval_set_constructs": [
-            {
-                "stage": "valid",
-                "split_name": "valid",
-                "args": {"remove_edge": False, "walk_length": None},
-            },
-            {
-                "stage": "test",
-                "split_name": "test",
-                "args": {"remove_edge": False, "walk_length": None},
-            },
-            {
-                "stage": "test",
-                "split_name": "train",
-                "args": {"remove_edge": True, "walk_length": None},
-            },
-        ],
-        "eval_metric": "acc",
-        "eval_func": "classification_func",
-        "num_classes": 11,
-    },
-    "FB15K237": {
-        "dataset_name": "FB15K237",
-        "dataset_splitter": "KGSplitter",
-        "preprocess": None,
-        "construct": "ConstructKG",
-        "args": {"remove_edge": True, "walk_length": None},
-        "process_label_func": "process_int_label",
-        "eval_set_constructs": [
-            {
-                "stage": "valid",
-                "split_name": "valid",
-                "args": {"remove_edge": False, "walk_length": None},
-            },
-            {
-                "stage": "test",
-                "split_name": "test",
-                "args": {"remove_edge": False, "walk_length": None},
-            },
-            {
-                "stage": "test",
-                "split_name": "train",
-                "args": {"remove_edge": True, "walk_length": None},
-            },
-        ],
-        "eval_metric": "acc",
-        "eval_func": "classification_func",
-        "num_classes": 237,
-    },
-    "wikics": {
-        "dataset_name": "wikics",
-        "dataset_splitter": "WikiSplitter",
-        "preprocess": None,
-        "construct": "ConstructNodeCls",
-        "args": {"walk_length": None},
-        "process_label_func": "process_pth_label",
-        "eval_set_constructs": [
-            {
-                "stage": "valid",
-                "split_name": "valid",
-            },
-            {
-                "stage": "test",
-                "split_name": "test",
-            },
-            {
-                "stage": "test",
-                "split_name": "train",
-            },
-        ],
-        "eval_metric": "acc",
-        "eval_func": "classification_func",
-        "num_classes": 10,
-    },
-    "chemblpre": {
-        "dataset_name": "chemblpre",
-        "dataset_splitter": "MolSplitter",
-        "preprocess": None,
-        "construct": "ConstructMolCls",
-        "args": {"walk_length": None},
-        "process_label_func": "process_multi_label",
-        "eval_set_constructs": [
-            {
-                "stage": "valid",
-                "split_name": "valid",
-                "process_label_func": "none_process_label",
-            },
-            {
-                "stage": "test",
-                "split_name": "test",
-                "process_label_func": "none_process_label",
-            },
-            {
-                "stage": "test",
-                "split_name": "train",
-                "process_label_func": "none_process_label",
-            },
-        ],
-        "eval_metric": "apr",
-        "eval_func": "binary_apr_func",
-        "num_classes": 1296,
-    },
-    "chempcba": {
-        "dataset_name": "chempcba",
-        "dataset_splitter": "MolSplitter",
-        "preprocess": None,
-        "construct": "ConstructMolCls",
-        "args": {"walk_length": None},
-        "process_label_func": "process_multi_label",
-        "eval_set_constructs": [
-            {
-                "stage": "valid",
-                "split_name": "valid",
-                "process_label_func": "eval_process_label",
-            },
-            {
-                "stage": "test",
-                "split_name": "test",
-                "process_label_func": "eval_process_label",
-            },
-            {
-                "stage": "test",
-                "split_name": "train",
-                "process_label_func": "eval_process_label",
-            },
-        ],
-        "eval_metric": "apr",
-        "eval_func": "binary_apr_func",
-        "num_classes": 128,
-    },
-    "chemhiv": {
-        "dataset_name": "chemhiv",
-        "dataset_splitter": "MolSplitter",
-        "preprocess": None,
-        "construct": "ConstructMolCls",
-        "args": {"walk_length": None},
-        "process_label_func": "process_pth_label",
-        "eval_set_constructs": [
-            {
-                "stage": "valid",
-                "split_name": "valid",
-            },
-            {
-                "stage": "test",
-                "split_name": "test",
-            },
-            {
-                "stage": "test",
-                "split_name": "train",
-            },
-        ],
-        "eval_metric": "auc",
-        "eval_func": "binary_auc_func",
-        "num_classes": 2,
-    },
-    "arxiv_fs": {
-            "dataset_name": "arxiv",
-            "task_level": "node",
-            "construct": "ConstructNCFSZS",
-            "args": {"walk_length": None, "n_way": 5, "min_n": 3, "val_n": [5, 3], "k_shot": 5, "min_k": 1, "val_k": [1, 3, 5], "q_query": 1, "fs_task_num": 1, "class_split_ratio": None, },
-            "mode": {"train": 0, "valid":1, "test":2},
-            "eval_set_constructs": [
-                {
-                    "stage": "valid",
-                },
-                {
-                    "stage": "test",
-                },
-            ],
-            "eval_metric": "acc",
-            "eval_func": "classification_single_func",
-            "train_only": False,
-            "eval_only": False,
-            "class_emb_flag": False,
-            "random_flag": True,
-    },
-    "arxiv_zs": {
-            "dataset_name": "arxiv",
-            "task_level": "node",
-            "construct": "ConstructNCFSZS",
-            "args": {"walk_length": None, "n_way": 5, "min_n": 3, "val_n": [5, 3], "k_shot": 0, "min_k": 0, "val_k": [0], "q_query": 3, "fs_task_num": 5, "class_split_ratio": None, },
-            "mode": {"train": 0, "valid":1, "test":2},
-            "eval_set_constructs": [
-                {
-                    "stage": "valid",
-                },
-                {
-                    "stage": "test",
-                },
-            ],
-            "eval_metric": "acc",
-            "eval_func": "classification_single_func",
-            "train_only": False,
-            "eval_only": False,
-            "class_emb_flag": True,
-            "random_flag": True,
-    },
-    "cora_fs": {
-            "dataset_name": "cora",
-            "task_level": "node",
-            "construct": "ConstructNCFSZS",
-            "args": {"walk_length": None, "n_way": 5, "min_n": 2, "val_n": [5, 2], "k_shot": 5, "min_k": 1, "val_k": [1, 3, 5], "q_query": 1, "fs_task_num": 1, "class_split_ratio": [0, 0, 7], },
-            "mode": {"valid":2, "test":2},
-            "eval_set_constructs": [
-                {
-                    "stage": "valid",
-                },
-                {
-                    "stage": "test",
-                },
-            ],
-            "eval_metric": "acc",
-            "eval_func": "classification_single_func",
-            "train_only": False,
-            "eval_only": True,
-            "class_emb_flag": False,
-    },
-    "cora_zs": {
-            "dataset_name": "cora",
-            "task_level": "node",
-            "construct": "ConstructNCFSZS",
-            "args": {"walk_length": None, "n_way": 5, "min_n": 2, "val_n": [5, 2], "k_shot": 5, "min_k": 1, "val_k": [1, 3, 5], "q_query": 1, "fs_task_num": 1, "class_split_ratio": [0, 0, 7], },
-            "mode": {"valid":2, "test":2},
-            "eval_set_constructs": [
-                {
-                    "stage": "valid",
-                },
-                {
-                    "stage": "test",
-                },
-            ],
-            "eval_metric": "acc",
-            "eval_func": "classification_single_func",
-            "train_only": False,
-            "eval_only": True,
-            "class_emb_flag": True,
-    },
-    "fb_fs": {
-            "dataset_name": "FB15K237",
-            "task_level": "link",
-            "construct": "ConstructLPFSZS",
-            "args": {"walk_length": None, "n_way": 10, "min_n": 5, "val_n": [10, 5], "k_shot": 5, "min_k": 1, "val_k": [1, 3, 5], "q_query": 1, "fs_task_num": 1, "class_split_ratio": None, },
-            "mode": {"train": 0, "valid":1, "test":2},
-            "eval_set_constructs": [
-                {
-                    "stage": "valid",
-                },
-                {
-                    "stage": "test",
-                },
-            ],
-            "eval_metric": "acc",
-            "eval_func": "classification_single_func",
-            "train_only": False,
-            "eval_only": False,
-            "class_emb_flag": False,
-            "random_flag": True,
-    },
-    "fb_zs": {
-            "dataset_name": "FB15K237",
-            "task_level": "link",
-            "construct": "ConstructLPFSZS",
-            "args": {"walk_length": None, "n_way": 10, "min_n": 5, "val_n": [10, 5], "k_shot": 0, "min_k": 0, "val_k": [0], "q_query": 1, "fs_task_num": 1, "class_split_ratio": None, },
-            "mode": {"train": 0, "valid":1, "test":2},
-            "eval_set_constructs": [
-                {
-                    "stage": "valid",
-                },
-                {
-                    "stage": "test",
-                },
-            ],
-            "eval_metric": "acc",
-            "eval_func": "classification_single_func",
-            "train_only": False,
-            "eval_only": False,
-            "class_emb_flag": True,
-            "random_flag": True,
-    },
-    "wn_fs": {
-            "dataset_name": "WN18RR",
-            "task_level": "link",
-            "construct": "ConstructLPFSZS",
-            "args": {"walk_length": None, "n_way": 10, "min_n": 5, "val_n": [10, 5], "k_shot": 5, "min_k": 1, "val_k": [1, 3, 5], "q_query": 1, "fs_task_num": 1, "class_split_ratio": [0, 0, 11], },
-            "mode": {"valid":2, "test":2},
-            "eval_set_constructs": [
-                {
-                    "stage": "valid",
-                },
-                {
-                    "stage": "test",
-                },
-            ],
-            "eval_metric": "acc",
-            "eval_func": "classification_single_func",
-            "train_only": False,
-            "eval_only": True,
-            "class_emb_flag": False,
-    },
-    "wn_zs": {
-            "dataset_name": "WN18RR",
-            "task_level": "link",
-            "construct": "ConstructLPFSZS",
-            "args": {"walk_length": None, "n_way": 10, "min_n": 5, "val_n": [10, 5], "k_shot": 0, "min_k": 0, "val_k": [0], "q_query": 1, "fs_task_num": 1, "class_split_ratio": [0, 0, 11], },
-            "mode": {"valid":2, "test":2},
-            "eval_set_constructs": [
-                {
-                    "stage": "valid",
-                },
-                {
-                    "stage": "test",
-                },
-            ],
-            "eval_metric": "acc",
-            "eval_func": "classification_single_func",
-            "train_only": False,
-            "eval_only": True,
-            "class_emb_flag": True,
-    },
-    "chemblpre_fs": {
-        "dataset_name": "chemblpre",
-        "dataset_splitter": "MolSplitter",
-        "preprocess": None,
-        "construct": "ConstructMolCls",
-        "args": {"walk_length": None},
-        "process_label_func": "process_multi_label",
-        "eval_set_constructs": [
-            {
-                "stage": "valid",
-                "split_name": "valid",
-                "process_label_func": "none_process_label",
-            },
-            {
-                "stage": "test",
-                "split_name": "test",
-                "process_label_func": "none_process_label",
-            },
-            {
-                "stage": "test",
-                "split_name": "train",
-                "process_label_func": "none_process_label",
-            },
-        ],
-        "eval_metric": "apr",
-        "eval_func": "binary_apr_func",
-        "num_classes": 1296,
-        "train_only": True,
-        "eval_only": False,
-    },
-}
-
-
-class TaskConstructor:
-    def __init__(self, tasks, encoder, batch_size=256, sample_size=-1):
-        self.tasks = tasks
-        self.batch_size = batch_size
-        self.sample_size = sample_size
-        self.dataset = {}
-        self.train_set = []
-        self.valid_dm_set = []
-        self.test_dm_set = []
-
-        for task in self.tasks:
-            config = task_config_lookup[task]
-            data = config["dataset_name"]
-            if data not in self.dataset and data in name2dataset:
-                self.dataset[data] = name2dataset[data](
-                    data, sentence_encoder=encoder
-                )
-
-            split = globals()[config["dataset_splitter"]](self.dataset[data])
-            if config["preprocess"] is not None:
-                global_data = globals()[config["preprocess"]](
-                    self.dataset[data], split
-                )
-            else:
-                global_data = None
-
-            train_data = globals()[config["construct"]](
-                task,
-                self.dataset[data],
-                split,
-                "train",
-                globals()[config["process_label_func"]],
-                global_data=global_data,
-                **config["args"],
-            )
-            self.train_set.append(train_data)
-
-            for eval_construct_config in config["eval_set_constructs"]:
-                if "process_label_func" in eval_construct_config:
-                    trim_class_func = globals()[
-                        eval_construct_config["process_label_func"]
-                    ]
-                else:
-                    trim_class_func = globals()[config["process_label_func"]]
-
-                if "args" in eval_construct_config:
-                    eval_args = eval_construct_config["args"]
-                else:
-                    eval_args = config["args"]
-
-                if "construct" in eval_construct_config:
-                    construct = globals()[eval_construct_config["construct"]]
-                else:
-                    construct = globals()[config["construct"]]
-                eval_data = construct(
-                    task,
-                    self.dataset[data],
-                    split,
-                    eval_construct_config["split_name"],
-                    trim_class_func,
-                    global_data=global_data,
-                    **eval_args,
-                )
-
-                dm_data = make_data(
-                    data,
-                    eval_data,
-                    eval_construct_config["split_name"],
-                    config["eval_metric"],
-                    globals()[config["eval_func"]],
-                    config["num_classes"],
-                    batch_size=self.batch_size,
-                    sample_size=self.sample_size,
-                )
-
-                if eval_construct_config["stage"] == "valid":
-                    self.valid_dm_set.append(dm_data)
-                else:
-                    self.test_dm_set.append(dm_data)
-
-    def make_train_data(self, multiple, min_ratio):
-        train_data = MultiDataset(
-            self.train_set,
-            dataset_multiple=multiple,
-            patience=3,
-            window_size=5,
-            min_ratio=min_ratio,
-        )
-        return train_data
-
-    def make_full_dm_list(self, multiple, min_ratio, train_data=None):
-        text_dataset = {
-            "train": DataWithMeta(
-                self.make_train_data(multiple, min_ratio)
-                if not train_data
-                else train_data,
-                self.batch_size,
-                sample_size=self.sample_size,
-            ),
-            "val": self.valid_dm_set,
-            "test": self.test_dm_set,
-        }
-        return text_dataset
-
-
 class UnifiedTaskConstructor:
-    def __init__(self, tasks, encoder, task_config_lookup, batch_size=256, sample_size=-1):
+    def __init__(
+        self,
+        tasks,
+        encoder,
+        task_config_lookup,
+        batch_size=256,
+        sample_size=-1,
+    ):
         self.tasks = tasks
         self.encoder = encoder
         self.task_config_lookup = task_config_lookup
         self.batch_size = batch_size
         self.sample_size = sample_size
-        with open('data/low_resource_split.json', 'r') as f:
+        with open("data/low_resource_split.json", "r") as f:
             self.lr_class_split = json.load(f)
 
         self.dataset = {}
@@ -982,6 +428,7 @@ class UnifiedTaskConstructor:
             self.construct_task(task)
 
     def construct_task(self, task):
+        print(task)
         config = self.task_config_lookup[task]
         data = config["dataset_name"]
         assert data in name2dataset
@@ -998,7 +445,11 @@ class UnifiedTaskConstructor:
 
         # only for e2e
         dataset_splitter = config.get("dataset_splitter")
-        split = globals()[dataset_splitter](self.dataset[data]) if dataset_splitter else None
+        split = (
+            globals()[dataset_splitter](self.dataset[data])
+            if dataset_splitter
+            else None
+        )
         if config["preprocess"] is not None:
             global_data = globals()[config["preprocess"]](
                 self.dataset[data], split
@@ -1008,11 +459,20 @@ class UnifiedTaskConstructor:
 
         # only for few-shot and zero-shot
         if "lr" in config["task_level"]:
-            g = self.get_graph(data, config["task_level"], self.lr_class_split.get(data))
+            g = self.get_graph(
+                data, config["task_level"], self.lr_class_split.get(data)
+            )
             if data in self.edges:
                 args["edges"] = self.edges[data]
             if data not in self.datamanager:
-                self.datamanager[data] = FewShotDataManager(g, args["n_way"], args["k_shot"], args["q_query"], class_split_ratio=args["class_split_ratio"], class_split_lst=self.lr_class_split.get(data))
+                self.datamanager[data] = FewShotDataManager(
+                    g,
+                    args["n_way"],
+                    args["k_shot"],
+                    args["q_query"],
+                    class_split_ratio=args["class_split_ratio"],
+                    class_split_lst=self.lr_class_split.get(data),
+                )
         else:
             g = None
 
@@ -1026,7 +486,9 @@ class UnifiedTaskConstructor:
                 data_manager=self.datamanager.get(data),
                 split=split,
                 split_name="train",
-                to_bin_cls_func=globals()[config["process_label_func"]] if config.get("process_label_func") else None,
+                to_bin_cls_func=globals()[config["process_label_func"]]
+                if config.get("process_label_func")
+                else None,
                 global_data=global_data,
                 n=args.get("min_n"),
                 k=args.get("min_k"),
@@ -1050,16 +512,34 @@ class UnifiedTaskConstructor:
                     construct = globals()[config["construct"]]
 
                 if "lr" in config["task_level"]:
-                    eval_data = self.get_lr_eval_data(construct, data, g, config, eval_construct_config, eval_args)
+                    eval_data = self.get_lr_eval_data(
+                        construct,
+                        data,
+                        g,
+                        config,
+                        eval_construct_config,
+                        eval_args,
+                    )
                 else:
-                    eval_data = self.get_e2e_eval_data(construct, data, task, split, global_data, config, eval_construct_config, eval_args)
+                    eval_data = self.get_e2e_eval_data(
+                        construct,
+                        data,
+                        task,
+                        split,
+                        global_data,
+                        config,
+                        eval_construct_config,
+                        eval_args,
+                    )
 
                 if eval_construct_config["stage"] == "valid":
                     self.valid_dm_set += eval_data
                 else:
                     self.test_dm_set += eval_data
 
-    def get_lr_eval_data(self, construct, data, g, config, eval_construct_config, eval_args):
+    def get_lr_eval_data(
+        self, construct, data, g, config, eval_construct_config, eval_args
+    ):
         eval_data = [
             construct(
                 dataset=g,
@@ -1078,7 +558,17 @@ class UnifiedTaskConstructor:
         ]
         return eval_data
 
-    def get_e2e_eval_data(self, construct, data, task, split, global_data, config, eval_construct_config, eval_args):
+    def get_e2e_eval_data(
+        self,
+        construct,
+        data,
+        task,
+        split,
+        global_data,
+        config,
+        eval_construct_config,
+        eval_args,
+    ):
         if "process_label_func" in eval_construct_config:
             trim_class_func = globals()[
                 eval_construct_config["process_label_func"]
@@ -1096,7 +586,7 @@ class UnifiedTaskConstructor:
             **eval_args,
         )
         dm_data = make_data(
-            data,
+            task,
             eval_data,
             eval_construct_config["split_name"],
             config["eval_metric"],
@@ -1176,9 +666,3 @@ class UnifiedTaskConstructor:
             "test": self.test_dm_set,
         }
         return text_dataset
-
-
-
-
-
-

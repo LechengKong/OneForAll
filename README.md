@@ -26,23 +26,28 @@ conda env create -f environment.yml
 For joint end-to-end experiments on all collected dataset, run
 
 ```
-python run_cdm.py num_layers 7 batch_size 512 dropout 0.15 JK none
+python run_cdm.py --override e2e_all_config.yaml
+```
+All arguments can be changed by space separated values such as
+
+```
+python run_cdm.py --override e2e_all_config.yaml num_layers 7 batch_size 512 dropout 0.15 JK none
 ```
 
-Users can modify the e2e_data_list variable to control which datasets are included during training. The length of e2e_data_list, data_multiple, min_ratio should be the same. They can be specified in command line arguments by comma separated values.
+Users can modify the `task_names` variable in `./e2e_all_config.yaml` to control which datasets are included during training. The length of `task_names`, `d_multiple`, and `d_min_ratio` should be the same. They can also be specified in command line arguments by comma separated values.
 
 e.g.
 ```
-python run_cdm.py data_list coralink,arxiv d_multiple 1,1 d_min_ratio 1,1
+python run_cdm.py task_names cora_link,arxiv d_multiple 1,1 d_min_ratio 1,1
 ```
 
 OFA-ind can be specified by 
 
 ```
-python run_cdm.py data_list coralink d_multiple 1 d_min_ratio 1
+python run_cdm.py task_names cora_link d_multiple 1 d_min_ratio 1
 ```
 
-## Low resource experiments
+## ~~Low resource experiments~~ (Under clean-up, online soon)
 To run the few-shot and zero-shot experiments
 
 ```

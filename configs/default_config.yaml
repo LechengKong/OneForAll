@@ -17,3 +17,5 @@ exp_name : "ofa1"
 train_sample_size : -1
 eval_sample_size : -1
 rwpe: 
+task_names:
+  - arxiv

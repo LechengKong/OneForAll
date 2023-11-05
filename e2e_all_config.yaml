@@ -1,0 +1,43 @@
+batch_size: 512
+eval_batch_size: 256
+dropout: 0.15
+num_layers: 7
+JK : "none"
+task_names:
+  - "cora_link"
+  - "cora_node"
+  - "pubmed_link"
+  - "pubmed_node"
+  - "arxiv"
+  - "WN18RR"
+  - "FB15K237"
+  - "wikics"
+  - "chemblpre"
+  - "chempcba"
+  - "chemhiv"
+
+d_multiple:
+  - 1.5
+  - 2
+  - 0.5
+  - 2.5
+  - 0.7
+  - 0.6
+  - 0.4
+  - 2
+  - 1
+  - 2
+  - 4
+
+d_min_ratio:
+  - 1
+  - 1
+  - 0.1
+  - 2
+  - 0.2
+  - 0.1
+  - 0.03
+  - 1
+  - 0.2
+  - 0.2
+  - 2
