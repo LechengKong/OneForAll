@@ -80,136 +80,6 @@ def data_construct(
     wiki_train_g = None
     for data_idx, name in enumerate(data_names):
         print("loading: ", name)
-        if name in ["chempcba", "chemblpre"]:
-            if name == "chempcba":
-                dataset = CHEMPCBAOFADataset(
-                    "chempcba", sentence_encoder=encoder
-                )
-            elif name == "chemblpre":
-                dataset = CHEMBLPREOFADataset(
-                    "chemblpre", sentence_encoder=encoder
-                )
-            # print(dataset[350342])
-            # return 0
-            split = dataset.get_idx_split()
-
-            def trim_class(embs, classes):
-                valid_idx = classes == classes
-                # valid_idx = torch.zeros_like(classes, dtype=torch.bool)
-                return (
-                    torch.tensor([[0]]),
-                    embs[valid_idx.view(-1)].detach().clone(),
-                    classes[:, valid_idx.view(-1)].detach().clone(),
-                )
-
-            def make_data(split_name, state_name):
-                return DataWithMeta(
-                    GraphListHierDataset(
-                        dataset,
-                        dataset.label_text_feat,
-                        dataset.prompt_edge_feat,
-                        dataset.prompt_text_feat,
-                        split[split_name],
-                        single_prompt_edge=True,
-                        # trim_class_func=trim_class,
-                        walk_length=walk_length,
-                    ),
-                    batch_size,
-                    sample_size=sample_size,
-                    metric="apr",
-                    state_name=state_name,
-                    classes=len(dataset.label_text_feat),
-                    meta_data={"eval_func": binary_apr_func},
-                )
-
-            split_data = {
-                "train": [
-                    GraphListHierDataset(
-                        dataset,
-                        dataset.label_text_feat,
-                        dataset.prompt_edge_feat,
-                        dataset.prompt_text_feat,
-                        split["train"],
-                        trim_class_func=trim_class,
-                        single_prompt_edge=True,
-                        walk_length=walk_length,
-                    )
-                ],
-                "test": [
-                    make_data("test", "test_" + name),
-                    make_data("train", "test_train_" + name),
-                ],
-                "val": [make_data("valid", "valid_" + name)],
-            }
-            constructed_data.append(split_data)
-        if name in ["chemhiv"]:
-            if name == "chemhiv":
-                dataset = CHEMHIVOFADataset(
-                    "chemhiv", sentence_encoder=encoder
-                )
-            # print(dataset[350342])
-            # return 0
-            split = dataset.get_idx_split()
-
-            # def trim_class(embs, classes):
-            #     valid_idx = classes == classes
-            #     # valid_idx = torch.zeros_like(classes, dtype=torch.bool)
-            #     return (
-            #         torch.tensor([[0]]),
-            #         embs[valid_idx.view(-1)].detach().clone(),
-            #         classes[:, valid_idx.view(-1)].detach().clone(),
-            #     )
-
-            def trim_class(embs, label):
-                label = label.to(torch.long)
-                one_hot_label = torch.nn.functional.one_hot(
-                    label, num_classes=2
-                )
-                return label, embs, one_hot_label
-
-            # print(sub_dataset.label_text_feat.size())
-
-            def make_data(split_name, state_name):
-                return DataWithMeta(
-                    GraphListHierDataset(
-                        dataset,
-                        dataset.label_text_feat,
-                        dataset.prompt_edge_feat,
-                        dataset.prompt_text_feat,
-                        split[split_name],
-                        single_prompt_edge=True,
-                        # trim_class_func=trim_class,
-                        walk_length=walk_length,
-                    ),
-                    batch_size,
-                    sample_size=sample_size,
-                    metric="auc",
-                    state_name=state_name,
-                    classes=len(dataset.label_text_feat),
-                    meta_data={"eval_func": binary_auc_func},
-                )
-
-            split_data = {
-                "train": [
-                    GraphListHierDataset(
-                        dataset,
-                        dataset.label_text_feat,
-                        dataset.prompt_edge_feat,
-                        dataset.prompt_text_feat,
-                        split["train"],
-                        trim_class_func=trim_class,
-                        single_prompt_edge=True,
-                        walk_length=walk_length,
-                    )
-                ],
-                "test": [
-                    make_data("test", "test_" + name),
-                    make_data("train", "test_train_" + name),
-                ],
-                "val": [make_data("valid", "valid_" + name)],
-            }
-            constructed_data.append(split_data)
-
         if name == "molzero":
             chembl_dataset = CHEMBLPREOFADataset(
                 "chemblpre", sentence_encoder=encoder
@@ -388,32 +258,6 @@ def data_construct(
                     meta_data={"eval_func": binary_single_auc_func},
                 )
 
-            # def hiv_trim_class(embs, label):
-            #     return label.view(1, -1), embs[0:1], label.view(1, -1)
-
-            # def make_data(split_name, state_name, shot=5):
-            #     return DataWithMeta(
-            #         GraphListHierFixDataset(
-            #             hiv_dataset,
-            #             hiv_dataset.label_text_feat,
-            #             hiv_dataset.prompt_edge_feat,
-            #             hiv_dataset.prompt_text_feat,
-            #             hiv_split[split_name],
-            #             trim_class_func=hiv_trim_class,
-            #             single_prompt_edge=True,
-            #             walk_length=walk_length,
-            #             class_ind=hiv_dataset.y.view(len(hiv_dataset), -1)[
-            #                 hiv_split[split_name], 0:1
-            #             ],
-            #             shot=shot,
-            #         ),
-            #         batch_size,
-            #         sample_size=sample_size,
-            #         metric="auc",
-            #         state_name=state_name,
-            #         classes=1,
-            #         meta_data={"eval_func": binary_single_auc_func},
-            #     )
             hiv_val_data = [
                 make_data("valid", "valid_hiv_" + str(i), i) for i in shots
             ]
@@ -540,7 +384,7 @@ def data_construct(
                 g_cora = dataset_cora.data
                 g_cora.x = dataset_cora.x_text_feat
                 g_cora.prompt_edge_feat = dataset_cora.prompt_edge_feat
-                g_cora.prompt_text_feat = g_cora.prompt_node_feat
+                #g_cora.prompt_text_feat = g_cora.prompt_node_feat
                 cora_fsdm = FewShotDataManager(
                     g_cora, n_way, k_shot, q_query, class_split_ratio=[7, 0, 0]
                 )

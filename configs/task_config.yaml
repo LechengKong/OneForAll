@@ -1,0 +1,286 @@
+E2E-node: &E2E-node
+  task_level: e2e_node
+  preprocess: null
+  construct: ConstructNodeCls
+  args:
+    walk_length: null
+  eval_set_constructs:
+    - stage: valid
+      split_name: valid
+    - stage: test
+      split_name: test
+    - stage: test
+      split_name: train
+  eval_metric: acc
+  eval_func: classification_func
+  train_only: False
+  eval_only: False
+
+arxiv: &arxiv
+  <<: *E2E-node
+  dataset_name: arxiv
+  dataset_splitter: ArxivSplitter
+  process_label_func: process_pth_label
+  num_classes: 40
+
+cora_node: &cora_node
+  <<: *E2E-node
+  dataset_name: cora
+  dataset_splitter: CiteSplitter
+  process_label_func: process_int_label
+  num_classes: 7
+
+pubmed_node: &pubmed_node
+  <<: *E2E-node
+  dataset_name: pubmed
+  dataset_splitter: CiteSplitter
+  process_label_func: process_int_label
+  num_classes: 3
+
+wikics: &wikics
+  <<: *E2E-node
+  dataset_name: wikics
+  dataset_splitter: WikiSplitter
+  process_label_func: process_pth_label
+  num_classes: 10
+
+LR-node: &LR-node
+  task_level: lr_node
+  preprocess: null
+  construct: ConstructNCFSZS
+  eval_set_constructs:
+    - stage: valid
+    - stage: test
+  eval_metric: acc
+  eval_func: classification_single_func
+  train_only: False
+  eval_only: False
+  random_flag: True
+
+arxiv_fs: &arxiv_fs
+  <<: *LR-node
+  dataset_name: arxiv
+  args: &arxiv_fs_args
+    walk_length: null
+    n_way: 5
+    min_n: 3
+    val_n: [5, 3]
+    k_shot: 5
+    min_k: 1
+    val_k: [1, 3, 5]
+    q_query: 1
+    fs_task_num: 1
+    class_split_ratio: null
+  mode:
+    train: 0
+    valid: 1
+    test: 2
+  class_emb_flag: False
+
+arxiv_zs: &arxiv_zs
+  <<: *arxiv_fs
+  args:
+    <<: *arxiv_fs_args
+    k_shot: 0
+    min_k: 0
+    val_k: [0]
+  class_emb_flag: True
+
+cora_fs: &cora_fs
+  <<: *LR-node
+  dataset_name: cora
+  args: &cora_fs_args
+    walk_length: null
+    n_way: 5
+    min_n: 2
+    val_n: [5, 2]
+    k_shot: 5
+    min_k: 1
+    val_k: [1, 3, 5]
+    q_query: 1
+    fs_task_num: 1
+    class_split_ratio: [0, 0, 7]
+  mode:
+    valid: 2
+    test: 2
+  class_emb_flag: False
+  eval_only: True
+
+cora_zs: &cora_zs
+  <<: *cora_fs
+  args:
+    <<: *cora_fs_args
+    k_shot: 0
+    min_k: 0
+    val_k: [0]
+  class_emb_flag: True
+
+E2E-link: &E2E-link
+  task_level: e2e_link
+  args:
+    remove_edge: True
+    walk_length: null
+  eval_set_constructs:
+    - stage: valid
+      split_name: valid
+      args:
+        remove_edge: False
+        walk_length: null
+    - stage: test
+      split_name: test
+      args:
+        remove_edge: False
+        walk_length: null
+    - stage: test
+      split_name: train
+      args:
+        remove_edge: True
+        walk_length: null
+  train_only: False
+  eval_only: False
+
+cora_link: &cora_link
+  <<: *E2E-link
+  dataset_name: cora
+  dataset_splitter: CiteLinkSplitter
+  preprocess: LinkConstructGraph
+  construct: ConstructLinkCls
+  process_label_func: process_int_label
+  eval_metric: auc
+  eval_func: binary_auc_func
+  num_classes: 2
+
+pubmed_link: &pubmed_link
+  <<: *cora_link
+  dataset_name: pubmed
+
+WN18RR: &WN18RR
+  <<: *E2E-link
+  dataset_name: WN18RR
+  dataset_splitter: KGSplitter
+  preprocess: null
+  construct: ConstructKG
+  process_label_func: process_int_label
+  eval_metric: acc
+  eval_func: classification_func
+  num_classes: 11
+
+FB15K237: &FB15K237
+  <<: *WN18RR
+  dataset_name: FB15K237
+  num_classes: 237
+
+LR-link: &LR-link
+  <<: *LR-node
+  task_level: lr_link
+  construct: ConstructLPFSZS
+
+fb_fs: &fb_fs
+  <<: *LR-link
+  dataset_name: FB15K237
+  args: &fb_fs_args
+    walk_length: null
+    n_way: 10
+    min_n: 5
+    val_n: [10, 5]
+    k_shot: 5
+    min_k: 1
+    val_k: [1, 3, 5]
+    q_query: 1
+    fs_task_num: 1
+    class_split_ratio: null
+  mode:
+    train: 0
+    valid: 1
+    test: 2
+  class_emb_flag: False
+
+fb_zs: &fb_zs
+  <<: *fb_fs
+  args:
+    <<: *fb_fs_args
+    k_shot: 0
+    min_k: 0
+    val_k: [0]
+  class_emb_flag: True
+
+wn_fs: &wn_fs
+  <<: *LR-link
+  dataset_name: WN18RR
+  args: &wn_fs_args
+    walk_length: null
+    n_way: 10
+    min_n: 5
+    val_n: [10, 5]
+    k_shot: 5
+    min_k: 1
+    val_k: [1, 3, 5]
+    q_query: 1
+    fs_task_num: 1
+    class_split_ratio: [0, 0, 11]
+  mode:
+    valid: 2
+    test: 2
+  class_emb_flag: False
+  eval_only: True
+
+wn_zs: &wn_zs
+  <<: *wn_fs
+  args:
+    <<: *wn_fs_args
+    k_shot: 0
+    min_k: 0
+    val_k: [0]
+  class_emb_flag: True
+
+E2E-graph: &E2E-graph
+  task_level: e2e_graph
+  dataset_splitter: MolSplitter
+  preprocess: null
+  construct: ConstructMolCls
+  args:
+    walk_length: null
+  eval_set_constructs:
+    - stage: valid
+      split_name: valid
+    - stage: test
+      split_name: test
+    - stage: test
+      split_name: train
+  train_only: False
+  eval_only: False
+
+chemblpre: &chemblpre
+  <<: *E2E-graph
+  dataset_name: chemblpre
+  process_label_func: process_multi_label
+  eval_metric: apr
+  eval_func: binary_apr_func
+  num_classes: 1296
+  train_only: True
+
+chempcba: &chempcba
+  <<: *E2E-graph
+  dataset_name: chempcba
+  process_label_func: process_multi_label
+  eval_set_constructs:
+    - stage: valid
+      split_name: valid
+      process_label_func: eval_process_label
+    - stage: test
+      split_name: test
+      process_label_func: eval_process_label
+    - stage: test
+      split_name: train
+      process_label_func: eval_process_label
+  eval_metric: apr
+  eval_func: binary_apr_func
+  num_classes: 128
+
+chemhiv: &chemhiv
+  <<: *E2E-graph
+  dataset_name: chemhiv
+  process_label_func: process_pth_label
+  eval_metric: auc
+  eval_func: binary_auc_func
+  num_classes: 2

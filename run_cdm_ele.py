@@ -43,13 +43,16 @@ from gp.lightning.metric import flat_binary_func_fs
 from gp.utils.utils import SmartTimer
 from scipy.sparse import csr_array
 
-from task_constructor import TaskConstructor
+from task_constructor import TaskConstructor, UnifiedTaskConstructor
 
 
 def main(params):
     encoder = SentenceEncoder("ST")
 
-    tasks = TaskConstructor(["chemhiv"], encoder)
+    task_config_lookup = load_yaml(os.path.join(os.path.dirname(__file__), "configs", "task_config.yaml"))
+
+    tasks = UnifiedTaskConstructor(["fb_fs"], encoder, task_config_lookup, batch_size=3)
+
 
     out_dim = 768 + (params.rwpe if params.rwpe is not None else 0)
     # out_dim = 768
@@ -60,7 +63,7 @@ def main(params):
         else:
             data_multiple = params.d_multiple
     else:
-        data_multiple = [2, 2, 0.3, 2, 0.5, 0.4, 0.3, 2, 1, 2, 3]
+        data_multiple = [1]
 
     if hasattr(params, "d_min_ratio"):
         if isinstance(params.d_min_ratio, str):
@@ -68,7 +71,7 @@ def main(params):
         else:
             min_ratio = params.d_min_ratio
     else:
-        min_ratio = [0.5, 0.5, 0.05, 1, 0.1, 0.1, 0.03, 1, 0.2, 0.2, 1]
+        min_ratio = [1]
 
     train_data = tasks.make_train_data(data_multiple, min_ratio)
 
