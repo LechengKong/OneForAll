@@ -479,7 +479,7 @@ class GraphListDataset(GraphTextDataset):
         **kwargs,
     ):
         super().__init__(graphs, process_label_func, **kwargs)
-        self.class_embs = class_embs
+        self.class_emb = class_embs
         self.prompt_edge_feat = prompt_edge_feat
         self.data_idx = data_idx
         self.single_prompt_edge = single_prompt_edge
