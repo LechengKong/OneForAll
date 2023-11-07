@@ -284,3 +284,83 @@ chemhiv: &chemhiv
   eval_metric: auc
   eval_func: binary_auc_func
   num_classes: 2
+
+LR-graph: &LR-graph
+  task_level: lr_graph
+  dataset_splitter: MolSplitter
+  preprocess: null
+  construct: ConstructGCFSZS
+  args: &LR_graph_args
+    walk_length: null
+    target_class: null
+    min_n: null
+    min_k: null
+  eval_set_constructs:
+    - stage: valid
+    - stage: test
+  train_only: False
+  eval_only: False
+
+chemblpre_fs: &chemblpre_fs
+  <<: *LR-graph
+  dataset_name: chemblpre
+  process_label_func: process_multi_label
+  args:
+    <<: *LR_graph_args
+    k_shot: 1
+  train_only: True
+
+chemblpre_zs: &chemblpre_zs
+  <<: *chemblpre_fs
+  args:
+    <<: *LR_graph_args
+    k_shot: 0
+
+chemhiv_fs: &chemhiv_fs
+  <<: *LR-graph
+  dataset_name: chemhiv
+  process_label_func: hiv_trim_class
+  args: &chemhiv_fs_args
+    <<: *LR_graph_args
+    k_shot: 1
+    val_n: [null]
+    val_k: [1, 3, 5, 10]
+    classes: 1
+  eval_metric: auc
+  eval_func: binary_single_auc_func
+  eval_only: True
+
+chemhiv_zs: &chemhiv_zs
+  <<: *chemhiv_fs
+  process_label_func: hiv_zs_class
+  args:
+    <<: *chemhiv_fs_args
+    k_shot: 0
+    val_k: [0]
+
+chempcba_fs: &chempcba_fs
+  <<: *LR-graph
+  dataset_name: chempcba
+  process_label_func: process_multi_label
+  args: &chempcba_fs_args
+    <<: *LR_graph_args
+    k_shot: 1
+    val_n: [49, 60, 47, 94, 93]
+    val_k: [1, 3, 5, 10]
+    classes: 1
+  eval_metric: auc
+  eval_func: binary_single_auc_func
+  eval_only: True
+
+chempcba_zs: &chempcba_zs
+  <<: *LR-graph
+  dataset_name: chempcba
+  process_label_func: process_multi_label
+  args:
+    <<: *chempcba_fs_args
+    k_shot: 0
+    val_n: [null]
+    val_k: [1, 3, 5, 10]
+    classes: 128
+  eval_metric: aucmulti
+  eval_func: binary_auc_multi_func

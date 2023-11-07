@@ -226,39 +226,9 @@ def ConstructMolCls(
     )
 
 
-def ConstructMolFSTrain(
-    name, dataset, split, split_name, to_bin_cls_func, **kwargs
-):
-    classes = dataset.y.view(len(dataset), -1)[split["train"]]
-
-    return GraphListHierFSDataset(
-        dataset,
-        dataset.label_text_feat,
-        dataset.prompt_edge_feat,
-        dataset.prompt_text_feat,
-        split[split_name],
-        process_label_func=to_bin_cls_func,
-        single_prompt_edge=True,
-        walk_length=kwargs["walk_length"],
-        class_ind=classes,
-    )
-
 
 def ConstructNCFSZS(
-    dataset,
-    data_manager,
-    n,
-    k,
-    split_name,
-    config,
-    state_name=None,
-    eval_metric=None,
-    eval_func=None,
-    train_flag=False,
-    adj=None,
-    total_task_num=50,
-    undirected_flag=True,
-    **kwargs,
+        dataset, data_manager, n, k, split_name, config, state_name=None, eval_metric=None, eval_func=None, train_flag=False, adj=None, total_task_num=50, undirected_flag=True,  **kwargs
 ):
     if config["class_emb_flag"]:
         class_emb = dataset.label_text_feat
@@ -267,10 +237,8 @@ def ConstructNCFSZS(
             len(dataset.label_text_feat), 1
         )
     random_flag = config["random_flag"] if split_name == "train" else None
-    split_name = config["mode"][split_name]
-    data_class = (
-        FewShotNCDataset if kwargs["k_shot"] > 0 else ZeroShotNCDataset
-    )
+    split_name=config["mode"][split_name]
+    data_class = FewShotNCDataset if kwargs["k_shot"]>0 else ZeroShotNCDataset
     ofa_data = data_class(
         pyg_graph=dataset,
         class_emb=class_emb,
@@ -300,25 +268,12 @@ def ConstructNCFSZS(
             metric=eval_metric,
             state_name=state_name,
             classes=n,
-            meta_data={"eval_func": eval_func},
+            meta_data={"eval_func": eval_func}
         )
 
 
 def ConstructLPFSZS(
-    dataset,
-    data_manager,
-    n,
-    k,
-    split_name,
-    config,
-    state_name=None,
-    eval_metric=None,
-    eval_func=None,
-    train_flag=False,
-    adj=None,
-    total_task_num=50,
-    undirected_flag=True,
-    **kwargs,
+        dataset, data_manager, n, k, split_name, config, state_name=None, eval_metric=None, eval_func=None, train_flag=False, adj=None, total_task_num=50, undirected_flag=True,  **kwargs
 ):
     if config["class_emb_flag"]:
         class_emb = dataset.edge_label_feat
@@ -328,9 +283,7 @@ def ConstructLPFSZS(
         )
     random_flag = config["random_flag"] if split_name == "train" else None
     split_name = config["mode"][split_name]
-    data_class = (
-        FewShotKGDataset if kwargs["k_shot"] > 0 else ZeroShotKGDataset
-    )
+    data_class = FewShotKGDataset if kwargs["k_shot"]>0 else ZeroShotKGDataset
     ofa_data = data_class(
         pyg_graph=dataset,
         class_emb=class_emb,
@@ -363,15 +316,46 @@ def ConstructLPFSZS(
             metric=eval_metric,
             state_name=state_name,
             classes=n,
-            meta_data={"eval_func": eval_func},
+            meta_data={"eval_func": eval_func}
         )
+
+def ConstructGCFSZS(
+        dataset, split, split_name, n, k, config, state_name=None, eval_metric=None, eval_func=None, train_flag=False, batch_size=None, **kwargs
+):
+    data_class = GraphListHierFSDataset if kwargs["k_shot"]>0 else GraphListHierDataset
+    ofa_data = data_class(
+        graphs=dataset,
+        class_embs=dataset.label_text_feat,
+        prompt_edge_feat=dataset.prompt_edge_feat,
+        prompt_text_feat=dataset.prompt_text_feat,
+        data_idx=split[split_name],
+        process_label_func=globals()[config["process_label_func"]],
+        single_prompt_edge=True,
+        walk_length=kwargs["walk_length"],
+        class_ind = dataset.y.view(len(dataset), -1)[split[split_name], 0:1] if kwargs["k_shot"]>0 else None,
+        shot=k,
+        target_class=n,
+    )
+
+    if train_flag:
+        return ofa_data
+    else:
+        return DataWithMeta(
+            ofa_data,
+            batch_size=batch_size,
+            sample_size=-1,
+            metric=eval_metric,
+            state_name=state_name,
+            classes=kwargs["classes"],
+            meta_data={"eval_func": eval_func}
+        )
+
 
 
 def process_pth_label(embs, label):
     binary_rep = torch.zeros((1, len(embs)))
     binary_rep[0, label.squeeze().to(torch.long)] = 1
-    return label.view(1, -1).to(torch.long), embs, binary_rep
-
+    return label.view(1, -1), embs, binary_rep
 
 def process_multi_label(embs, label):
     valid_idx = label == label
@@ -397,18 +381,24 @@ def process_int_label(embs, label):
     return torch.tensor([label]).view(1, -1), embs, binary_rep
 
 
+def hiv_trim_class(embs, label):
+    one_hot_label = torch.nn.functional.one_hot(
+        label.to(torch.long), num_classes=2
+    )
+    return label, embs, one_hot_label
+
+
+def hiv_zs_class(embs, label):
+    # one_hot_label = torch.nn.functional.one_hot(
+    #     label.to(torch.long), num_classes=2
+    # )
+    return label, embs[0:1], label
+
 none_process_label = None
 
 
 class UnifiedTaskConstructor:
-    def __init__(
-        self,
-        tasks,
-        encoder,
-        task_config_lookup,
-        batch_size=256,
-        sample_size=-1,
-    ):
+    def __init__(self, tasks, encoder, task_config_lookup, batch_size=256, sample_size=-1):
         self.tasks = tasks
         self.encoder = encoder
         self.task_config_lookup = task_config_lookup
@@ -428,7 +418,6 @@ class UnifiedTaskConstructor:
             self.construct_task(task)
 
     def construct_task(self, task):
-        print(task)
         config = self.task_config_lookup[task]
         data = config["dataset_name"]
         assert data in name2dataset
@@ -443,13 +432,9 @@ class UnifiedTaskConstructor:
                 data, sentence_encoder=self.encoder
             )
 
-        # only for e2e
+        # for e2e and few-shot and zero-shot graph tasks
         dataset_splitter = config.get("dataset_splitter")
-        split = (
-            globals()[dataset_splitter](self.dataset[data])
-            if dataset_splitter
-            else None
-        )
+        split = globals()[dataset_splitter](self.dataset[data]) if dataset_splitter else None
         if config["preprocess"] is not None:
             global_data = globals()[config["preprocess"]](
                 self.dataset[data], split
@@ -457,22 +442,13 @@ class UnifiedTaskConstructor:
         else:
             global_data = None
 
-        # only for few-shot and zero-shot
-        if "lr" in config["task_level"]:
-            g = self.get_graph(
-                data, config["task_level"], self.lr_class_split.get(data)
-            )
+        # for few-shot and zero-shot tasks
+        if config["task_level"] == "lr_node" or config["task_level"] == "lr_link":
+            g = self.get_graph(data, config["task_level"], self.lr_class_split.get(data))
             if data in self.edges:
                 args["edges"] = self.edges[data]
             if data not in self.datamanager:
-                self.datamanager[data] = FewShotDataManager(
-                    g,
-                    args["n_way"],
-                    args["k_shot"],
-                    args["q_query"],
-                    class_split_ratio=args["class_split_ratio"],
-                    class_split_lst=self.lr_class_split.get(data),
-                )
+                self.datamanager[data] = FewShotDataManager(g, args["n_way"], args["k_shot"], args["q_query"], class_split_ratio=args["class_split_ratio"], class_split_lst=self.lr_class_split.get(data))
         else:
             g = None
 
@@ -486,9 +462,7 @@ class UnifiedTaskConstructor:
                 data_manager=self.datamanager.get(data),
                 split=split,
                 split_name="train",
-                to_bin_cls_func=globals()[config["process_label_func"]]
-                if config.get("process_label_func")
-                else None,
+                to_bin_cls_func=globals()[config["process_label_func"]] if config.get("process_label_func") else None,
                 global_data=global_data,
                 n=args.get("min_n"),
                 k=args.get("min_k"),
@@ -512,45 +486,29 @@ class UnifiedTaskConstructor:
                     construct = globals()[config["construct"]]
 
                 if "lr" in config["task_level"]:
-                    eval_data = self.get_lr_eval_data(
-                        construct,
-                        data,
-                        g,
-                        config,
-                        eval_construct_config,
-                        eval_args,
-                    )
+                    eval_data = self.get_lr_eval_data(construct, data, g, config, split, eval_construct_config, eval_args)
                 else:
-                    eval_data = self.get_e2e_eval_data(
-                        construct,
-                        data,
-                        task,
-                        split,
-                        global_data,
-                        config,
-                        eval_construct_config,
-                        eval_args,
-                    )
+                    eval_data = self.get_e2e_eval_data(construct, data, task, split, global_data, config, eval_construct_config, eval_args)
 
                 if eval_construct_config["stage"] == "valid":
                     self.valid_dm_set += eval_data
                 else:
                     self.test_dm_set += eval_data
 
-    def get_lr_eval_data(
-        self, construct, data, g, config, eval_construct_config, eval_args
-    ):
+    def get_lr_eval_data(self, construct, data, g, config, split, eval_construct_config, eval_args):
         eval_data = [
             construct(
-                dataset=g,
-                data_manager=self.datamanager[data],
+                dataset=g if g else self.dataset[data],
+                data_manager=self.datamanager.get(data),
                 n=n,
                 k=k,
                 split_name=eval_construct_config["stage"],
                 config=config,
-                state_name=f'{eval_construct_config["stage"]}_fs{n}{k}_{data}',
+                split=split,
+                state_name=f'{eval_construct_config["stage"]}_fs{n}_{k}_{data}' if n else f'{eval_construct_config["stage"]}_fs{k}_{data}',
                 eval_metric=config["eval_metric"],
                 eval_func=globals()[config["eval_func"]],
+                batch_size=self.batch_size,
                 **eval_args,
             )
             for n in eval_args["val_n"]
@@ -558,17 +516,7 @@ class UnifiedTaskConstructor:
         ]
         return eval_data
 
-    def get_e2e_eval_data(
-        self,
-        construct,
-        data,
-        task,
-        split,
-        global_data,
-        config,
-        eval_construct_config,
-        eval_args,
-    ):
+    def get_e2e_eval_data(self, construct, data, task, split, global_data, config, eval_construct_config, eval_args):
         if "process_label_func" in eval_construct_config:
             trim_class_func = globals()[
                 eval_construct_config["process_label_func"]
@@ -666,3 +614,9 @@ class UnifiedTaskConstructor:
             "test": self.test_dm_set,
         }
         return text_dataset
+
+
+
+
+
+
