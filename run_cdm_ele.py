@@ -51,7 +51,8 @@ def main(params):
 
     task_config_lookup = load_yaml(os.path.join(os.path.dirname(__file__), "configs", "task_config.yaml"))
 
-    tasks = UnifiedTaskConstructor(["fb_fs"], encoder, task_config_lookup, batch_size=3)
+    tasks = UnifiedTaskConstructor(["chemblpre_fs", "chemhiv_fs"], encoder, task_config_lookup, batch_size=128)
+    #tasks = UnifiedTaskConstructorTaskConstructor(["cora_node", "cora_link"], encoder, batch_size=128)
 
 
     out_dim = 768 + (params.rwpe if params.rwpe is not None else 0)
