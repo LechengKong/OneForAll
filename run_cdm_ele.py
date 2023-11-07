@@ -43,7 +43,7 @@ from gp.lightning.metric import flat_binary_func_fs
 from gp.utils.utils import SmartTimer
 from scipy.sparse import csr_array
 
-from task_constructor import TaskConstructor, UnifiedTaskConstructor
+from task_constructor import UnifiedTaskConstructor
 
 
 def main(params):
@@ -51,9 +51,7 @@ def main(params):
 
     task_config_lookup = load_yaml(os.path.join(os.path.dirname(__file__), "configs", "task_config.yaml"))
 
-    tasks = UnifiedTaskConstructor(["chemblpre_fs", "chemhiv_fs"], encoder, task_config_lookup, batch_size=128)
-    #tasks = UnifiedTaskConstructorTaskConstructor(["cora_node", "cora_link"], encoder, batch_size=128)
-
+    tasks = UnifiedTaskConstructor(["chemblpre_zs", "chemhiv_zs"], encoder, task_config_lookup, batch_size=128)
 
     out_dim = 768 + (params.rwpe if params.rwpe is not None else 0)
     # out_dim = 768

@@ -332,7 +332,7 @@ chemhiv_fs: &chemhiv_fs
 
 chemhiv_zs: &chemhiv_zs
   <<: *chemhiv_fs
-  process_label_func: process_pth_label
+  process_label_func: hiv_zs_class
   args:
     <<: *chemhiv_fs_args
     k_shot: 0
