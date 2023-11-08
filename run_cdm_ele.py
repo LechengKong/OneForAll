@@ -51,7 +51,7 @@ def main(params):
 
     task_config_lookup = load_yaml(os.path.join(os.path.dirname(__file__), "configs", "task_config.yaml"))
 
-    tasks = UnifiedTaskConstructor(["chemblpre_zs", "chemhiv_zs"], encoder, task_config_lookup, batch_size=128)
+    tasks = UnifiedTaskConstructor(["arxiv_fs"], encoder, task_config_lookup, batch_size=5)
 
     out_dim = 768 + (params.rwpe if params.rwpe is not None else 0)
     # out_dim = 768
@@ -175,15 +175,15 @@ if __name__ == "__main__":
         help="Modify config options using the command-line",
     )
 
-    parser.add_argument("--n_way", type=int, default=5)
-    parser.add_argument("--k_shot", type=int, default=3)
-    parser.add_argument("--q_query", type=int, default=3)
-    parser.add_argument(
-        "--fs_task_num",
-        type=int,
-        default=5,
-        help="Number of tasks for few-shot training.",
-    )
+    # parser.add_argument("--n_way", type=int, default=5)
+    # parser.add_argument("--k_shot", type=int, default=3)
+    # parser.add_argument("--q_query", type=int, default=3)
+    # parser.add_argument(
+    #     "--fs_task_num",
+    #     type=int,
+    #     default=5,
+    #     help="Number of tasks for few-shot training.",
+    # )
 
     params = parser.parse_args()
     configs = []
@@ -207,4 +207,5 @@ if __name__ == "__main__":
 
     torch.set_float32_matmul_precision("high")
     params.log_project = "full_cdm"
+    print(params)
     main(params)
