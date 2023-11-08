@@ -257,7 +257,7 @@ chemblpre: &chemblpre
   eval_metric: apr
   eval_func: binary_apr_func
   num_classes: 1296
-  train_only: True
+  train_only: False
 
 chempcba: &chempcba
   <<: *E2E-graph
