@@ -311,7 +311,7 @@ LR-graph: &LR-graph
 chemblpre_fs: &chemblpre_fs
   <<: *LR-graph
   dataset_name: chemblpre
-  process_label_func: process_multi_label
+  process_label_func: process_multi_label_double
   args:
     <<: *LR_graph_args
     k_shot: 1

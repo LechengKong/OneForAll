@@ -20,12 +20,17 @@ def load_prompt_json():
 
 
 def get_label_texts(labels):
-    label_texts = [None] * len(labels)
+    label_texts = [None] * int(len(labels) * 2)
     for entry in labels:
         label_texts[labels[entry][0]] = (
-            "prompt node. molecule property description. "
-            + "The molecule is effective to the following assay. "
-            + labels[entry][1][0][:-41]
+                "prompt node. molecule property description. "
+                + "The molecule is effective to the following assay. "
+                + labels[entry][1][0][:-41]
+        )
+        label_texts[labels[entry][0]+ len(labels)] = (
+                "prompt node. molecule property description. "
+                + "The molecule is not effective to the following assay. "
+                + labels[entry][1][0][:-41]
         )
     return label_texts
 

@@ -357,6 +357,7 @@ def process_pth_label(embs, label):
     binary_rep[0, label.squeeze().to(torch.long)] = 1
     return label.view(1, -1).to(torch.long), embs, binary_rep
 
+
 def process_multi_label(embs, label):
     valid_idx = label == label
     # valid_idx = torch.zeros_like(classes, dtype=torch.bool)
@@ -366,6 +367,18 @@ def process_multi_label(embs, label):
         label[:, valid_idx.view(-1)].detach().clone(),
     )
 
+def process_multi_label_double(embs, label):
+    valid_idx = label == label
+    label = label[:, valid_idx.view(-1)].detach().clone()
+    valid_idx = valid_idx.repeat(1,2)
+    label = torch.cat([label, 1-label], dim=-1)
+
+    return (
+        torch.tensor([[0]]),
+        embs[valid_idx.view(-1)].detach().clone(),
+        label,
+    )
+
 
 def eval_process_label(embs, classes):
     return (
@@ -373,7 +386,6 @@ def eval_process_label(embs, classes):
         embs,
         classes,
     )
-
 
 def process_int_label(embs, label):
     binary_rep = torch.zeros((1, len(embs)))
