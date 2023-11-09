@@ -199,4 +199,5 @@ if __name__ == "__main__":
 
     torch.set_float32_matmul_precision("high")
     params.log_project = "full_cdm"
+    print(params)
     main(params)
