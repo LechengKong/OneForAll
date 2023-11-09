@@ -2376,8 +2376,8 @@ class MultiDataset(DatasetWithCollate):
             self.min_ratio = np.zeros(len(self.sizes)) + self.min_ratio
         self.mode = mode
         if isinstance(self.mode, str):
-            self.mode = [self.mode]*len(self.sizes)
-        self.mode = [1 if m=="max" else 0 for m in self.mode]
+            self.mode = [self.mode] * len(self.sizes)
+        self.mode = [1 if m == "max" else 0 for m in self.mode]
         # self.walk_length = walk_length
         self.compute_sizes()
 
@@ -2417,7 +2417,9 @@ class MultiDataset(DatasetWithCollate):
             ]
             vals = np.array(vals)
             mean = vals.mean()
-            if self.mode[0] * (self.modemetric[i] > mean) + (1-self.mode[0]) * (not self.modemetric[i] > mean):
+            if self.mode[0] * (metric[i] > mean) + (1 - self.mode[0]) * (
+                not metric[i] > mean
+            ):
                 self.inpatience[i] = 0
             else:
                 self.inpatience[i] += 1

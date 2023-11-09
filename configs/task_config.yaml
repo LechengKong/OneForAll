@@ -254,9 +254,16 @@ chemblpre: &chemblpre
   <<: *E2E-graph
   dataset_name: chemblpre
   process_label_func: process_multi_label
+  eval_set_constructs:
+    - stage: valid
+      split_name: valid
+      process_label_func: eval_process_label
+    - stage: test
+      split_name: test
+      process_label_func: eval_process_label
   eval_metric: apr
   eval_func: binary_apr_func
-  num_classes: 1296
+  num_classes: 1295
   train_only: False
 
 chempcba: &chempcba
