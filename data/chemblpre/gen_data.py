@@ -9,25 +9,15 @@ import pickle
 from datasets import load_dataset
 import pandas as pd
 from data.chemblpre.gen_raw_graph import smiles2graph
+from utils import get_label_texts
 
 
 def load_prompt_json():
     with open(
-        os.path.join(os.path.dirname(__file__), "prompt_pretrain.json"), "rb"
+            os.path.join(os.path.dirname(__file__), "prompt_pretrain.json"), "rb"
     ) as f:
         prompt_text = json.load(f)
     return prompt_text["chembl"]
-
-
-def get_label_texts(labels):
-    label_texts = [None] * len(labels)
-    for entry in labels:
-        label_texts[labels[entry][0]] = (
-                "prompt node. molecule property description. "
-                + "The molecule is effective to the following assay. "
-                + labels[entry][1][0][:-41]
-        )
-    return label_texts
 
 
 def get_local_text():

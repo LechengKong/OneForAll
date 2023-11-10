@@ -358,6 +358,13 @@ def process_pth_label(embs, label):
     return label.view(1, -1).to(torch.long), embs, binary_rep
 
 
+def process_reverse_binary_label(embs, label):
+    binary_rep = torch.zeros((1, len(embs)))
+    binary_rep[0, label.squeeze().to(torch.long)] = 1
+    embs = embs[[1, 0]]
+    return label.view(1, -1).to(torch.long), embs, binary_rep
+
+
 def process_multi_label(embs, label):
     valid_idx = label == label
     # valid_idx = torch.zeros_like(classes, dtype=torch.bool)
@@ -404,7 +411,7 @@ def hiv_zs_class(embs, label):
     # one_hot_label = torch.nn.functional.one_hot(
     #     label.to(torch.long), num_classes=2
     # )
-    return label, embs[1:2], label
+    return label, embs[0:1], label
 
 none_process_label = None
 

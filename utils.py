@@ -17,7 +17,7 @@ from torch_geometric.utils import (
 
 class SentenceEncoder:
     def __init__(
-        self, name, root="cache_data/model", batch_size=512, multi_gpu=False
+            self, name, root="cache_data/model", batch_size=512, multi_gpu=False
     ):
         self.batch_size = batch_size
         self.multi_gpu = multi_gpu
@@ -190,3 +190,19 @@ def scipy_rwpe(data, walk_length):
     pe = torch.tensor(np.stack(pe_list, axis=-1))
 
     return pe
+
+
+def get_label_texts(labels):
+    label_texts = [None] * int(len(labels) * 2)
+    for entry in labels:
+        label_texts[labels[entry][0]] = (
+                "prompt node. molecule property description. "
+                + "The molecule is effective to the following assay. "
+                + labels[entry][1][0][:-41]
+        )
+        label_texts[labels[entry][0] + len(labels)] = (
+                "prompt node. molecule property description. "
+                + "The molecule is not effective to the following assay. "
+                + labels[entry][1][0][:-41]
+        )
+    return label_texts
