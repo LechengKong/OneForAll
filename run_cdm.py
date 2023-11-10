@@ -158,7 +158,7 @@ def main(params):
         save_model=False,
         load_best=False,
         reload_freq=1,
-        test_rep=params.test_rep
+        test_rep=params.test_rep,
         # profiler="simple",
         # accelerator="cpu",
     )

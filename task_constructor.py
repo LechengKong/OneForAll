@@ -374,7 +374,8 @@ def process_multi_label(embs, label):
         label[:, valid_idx.view(-1)].detach().clone(),
     )
 
-def process_multi_label_double(embs, label):
+
+def process_positive_negative_multi_label(embs, label):
     valid_idx = label == label
     label = label[:, valid_idx.view(-1)].detach().clone()
     valid_idx = valid_idx.repeat(1,2)
@@ -393,6 +394,11 @@ def eval_process_label(embs, classes):
         embs,
         classes,
     )
+
+
+def process_label_positive_only(embs, label):
+    return torch.tensor([[0]]), embs[:len(label.view(-1))], label
+
 
 def process_int_label(embs, label):
     binary_rep = torch.zeros((1, len(embs)))

@@ -253,14 +253,14 @@ E2E-graph: &E2E-graph
 chemblpre: &chemblpre
   <<: *E2E-graph
   dataset_name: chemblpre
-  process_label_func: process_multi_label
+  process_label_func: process_positive_negative_multi_label
   eval_set_constructs:
     - stage: valid
       split_name: valid
-      process_label_func: eval_process_label
+      process_label_func: process_label_positive_only
     - stage: test
       split_name: test
-      process_label_func: eval_process_label
+      process_label_func: process_label_positive_only
   eval_metric: apr
   eval_func: binary_apr_func
   num_classes: 1295
@@ -269,17 +269,17 @@ chemblpre: &chemblpre
 chempcba: &chempcba
   <<: *E2E-graph
   dataset_name: chempcba
-  process_label_func: process_multi_label
+  process_label_func: process_positive_negative_multi_label
   eval_set_constructs:
     - stage: valid
       split_name: valid
-      process_label_func: eval_process_label
+      process_label_func: process_label_positive_only
     - stage: test
       split_name: test
-      process_label_func: eval_process_label
+      process_label_func: process_label_positive_only
     - stage: test
       split_name: train
-      process_label_func: eval_process_label
+      process_label_func: process_label_positive_only
   eval_metric: apr
   eval_func: binary_apr_func
   num_classes: 128
@@ -287,7 +287,7 @@ chempcba: &chempcba
 chemhiv: &chemhiv
   <<: *E2E-graph
   dataset_name: chemhiv
-  process_label_func: process_pth_label
+  process_label_func: process_reverse_binary_label
   eval_metric: auc
   eval_func: binary_auc_func
   num_classes: 2
