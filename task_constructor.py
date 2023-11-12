@@ -28,6 +28,7 @@ from ofa_datasets import (
     ZeroShotKGDataset,
     SubgraphNopromptDataset,
     GraphListNopromptDataset,
+    SubgraphNopromptLinkDataset,
 )
 from fs_datamanager import FewShotDataManager
 
@@ -174,6 +175,20 @@ def ConstructNodeCls(
     )
 
 
+def ConstructNodeNopromptCls(
+    name, dataset, split, split_name, to_bin_cls_func, **kwargs
+):
+    text_g = dataset.data
+
+    return SubgraphNopromptDataset(
+        text_g,
+        text_g.label_text_feat,
+        split[split_name],
+        to_undirected=True,
+        process_label_func=to_bin_cls_func,
+    )
+
+
 def ConstructLinkCls(
     name, dataset, split, split_name, to_bin_cls_func, **kwargs
 ):
@@ -182,6 +197,26 @@ def ConstructLinkCls(
     train_graph = kwargs["global_data"]
 
     return SubgraphLinkHierDataset(
+        train_graph,
+        train_graph.edge_label_feat,
+        edges.T[split[split_name]].numpy(),
+        prompt_feat=train_graph.prompt_text_edge_feat,
+        to_undirected=True,
+        hop=3,
+        remove_edge=kwargs["remove_edge"],
+        process_label_func=to_bin_cls_func,
+        walk_length=kwargs["walk_length"],
+    )
+
+
+def ConstructLinkNopromptCls(
+    name, dataset, split, split_name, to_bin_cls_func, **kwargs
+):
+    text_g = dataset.data
+    edges = text_g.edge_index
+    train_graph = kwargs["global_data"]
+
+    return SubgraphNopromptLinkDataset(
         train_graph,
         train_graph.edge_label_feat,
         edges.T[split[split_name]].numpy(),
@@ -225,6 +260,20 @@ def ConstructMolCls(
         walk_length=kwargs["walk_length"],
     )
 
+
+def ConstructMolNopromptCls(
+    name, dataset, split, split_name, to_bin_cls_func, **kwargs
+):
+
+    return GraphListNopromptDataset(
+        dataset,
+        dataset.label_text_feat,
+        dataset.prompt_edge_feat,
+        split[split_name],
+        process_label_func=to_bin_cls_func,
+        single_prompt_edge=True,
+        walk_length=kwargs["walk_length"],
+    )
 
 
 def ConstructNCFSZS(

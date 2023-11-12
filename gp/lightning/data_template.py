@@ -9,16 +9,16 @@ from torch.utils.data import Dataset
 
 class DataWithMeta:
     def __init__(
-        self,
-        data: Dataset,
-        batch_size: int,
-        state_name: Optional[str] = None,
-        feat_dim: int = 0,
-        metric: Optional[str] = None,
-        classes: Union[int, List[int]] = 2,
-        is_regression: bool = False,
-        meta_data: Any = None,
-        sample_size: Optional[int] = -1,
+            self,
+            data: Dataset,
+            batch_size: int,
+            state_name: Optional[str] = None,
+            feat_dim: int = 0,
+            metric: Optional[str] = None,
+            classes: Union[int, List[int]] = 2,
+            is_regression: bool = False,
+            meta_data: Any = None,
+            sample_size: Optional[int] = -1,
     ):
         self.data = data
         self.batch_size = batch_size
@@ -44,22 +44,24 @@ class DataWithMeta:
 
 class DataModule(LightningDataModule):
     def __init__(
-        self,
-        data: Dict[str, DataWithMeta],
-        num_workers: int = 4,
+            self,
+            data: Dict[str, DataWithMeta],
+            num_workers: int = 4,
+            pin_memory=True,
     ):
         super().__init__()
         self.datasets = data
         self.num_workers = num_workers
+        self.pin_memory = pin_memory
 
     def create_dataloader(
-        self,
-        data: Dataset,
-        size: int,
-        batch_size: int,
-        drop_last: bool = True,
-        shuffle: bool = True,
-        num_workers: int = 0,
+            self,
+            data: Dataset,
+            size: int,
+            batch_size: int,
+            drop_last: bool = True,
+            shuffle: bool = True,
+            num_workers: int = 0,
     ):
         sampler = None
         if size > 0:
@@ -74,6 +76,7 @@ class DataModule(LightningDataModule):
                 num_workers=num_workers,
                 collate_fn=data.get_collate_fn(),
                 drop_last=drop_last,
+                pin_memory=self.pin_memory,
             )
         if isinstance(data, PygDataset):
             return PygDataloader(
@@ -83,6 +86,7 @@ class DataModule(LightningDataModule):
                 sampler=sampler,
                 num_workers=num_workers,
                 drop_last=drop_last,
+                pin_memory=self.pin_memory,
             )
 
     def train_dataloader(self):

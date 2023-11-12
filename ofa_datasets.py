@@ -369,6 +369,24 @@ class SubgraphLinkHierDataset(SubgraphHierDataset):
         return edge_index, neighbors, label, binary_rep, [0, 1]
 
 
+class SubgraphNopromptLinkDataset(SubgraphLinkHierDataset):
+    def make_prompted_graph(self, feature_graph):
+        (
+            feat,
+            edge_feat,
+            edge_index,
+            e_type,
+            target_node_id,
+            label,
+            binary_rep,
+        ) = feature_graph
+        feat = torch.cat([feat, self.class_emb], dim=0)
+        new_subg = pyg.data.Data(
+            feat, edge_index, y=label, edge_attr=edge_feat, edge_type=e_type
+        )
+        return new_subg
+
+
 class SubgraphKGHierDataset(SubgraphHierDataset):
     def __init__(
         self,

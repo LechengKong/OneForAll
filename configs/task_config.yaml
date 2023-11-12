@@ -23,12 +23,20 @@ arxiv: &arxiv
   process_label_func: process_pth_label
   num_classes: 40
 
+arxiv_noprompt: &arxiv_noprompt
+  <<: *arxiv
+  construct: ConstructNodeNopromptCls
+
 cora_node: &cora_node
   <<: *E2E-node
   dataset_name: cora
   dataset_splitter: CiteSplitter
   process_label_func: process_int_label
   num_classes: 7
+
+cora_node_noprompt: &cora_node_noprompt
+  <<: *cora_node
+  construct: ConstructNodeNopromptCls
 
 pubmed_node: &pubmed_node
   <<: *E2E-node
@@ -149,6 +157,10 @@ cora_link: &cora_link
   eval_metric: auc
   eval_func: binary_auc_func
   num_classes: 2
+
+cora_link_noprompt: &cora_link_noprompt
+  <<: *cora_link
+  construct: ConstructLinkNopromptCls
 
 pubmed_link: &pubmed_link
   <<: *cora_link
@@ -291,6 +303,10 @@ chemhiv: &chemhiv
   eval_metric: auc
   eval_func: binary_auc_func
   num_classes: 2
+
+chemhiv_noprompt: &chemhiv_noprompt
+  <<: *chemhiv
+  construct: ConstructMolNopromptCls
 
 LR-graph: &LR-graph
   task_level: lr_graph
