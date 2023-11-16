@@ -117,11 +117,11 @@ def main(params):
         5,
         out_dim,
         out_dim,
-        drop_ratio=params.dropout,
+        # drop_ratio=params.dropout,
         JK=params.JK,
     )
     bin_model = BinGraphAttModel if params.JK == "none" else BinGraphModel
-    model = bin_model(gnn, out_dim, 1, add_rwpe=params.rwpe)
+    model = bin_model(gnn, out_dim, 1, add_rwpe=params.rwpe, dropout=params.dropout)
     optimizer = torch.optim.Adam(
         model.parameters(), lr=params.lr, weight_decay=params.l2
     )

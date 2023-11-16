@@ -17,13 +17,13 @@ class MultiLayerMessagePassing(nn.Module, metaclass=ABCMeta):
     """Message passing GNN"""
 
     def __init__(
-        self,
-        num_layers,
-        inp_dim,
-        out_dim,
-        drop_ratio=None,
-        JK="last",
-        batch_norm=True,
+            self,
+            num_layers,
+            inp_dim,
+            out_dim,
+            drop_ratio=None,
+            JK="last",
+            batch_norm=True,
     ):
         """
 
@@ -88,7 +88,7 @@ class MultiLayerMessagePassing(nn.Module, metaclass=ABCMeta):
     def build_message_from_output(self, g, output):
         pass
 
-    def forward(self, g):
+    def forward(self, g, drop_mask=None):
         h_list = []
 
         message = self.build_message_from_input(g)
@@ -101,7 +101,11 @@ class MultiLayerMessagePassing(nn.Module, metaclass=ABCMeta):
             if layer != self.num_layers - 1:
                 h = F.relu(h)
             if self.drop_ratio is not None:
-                h = F.dropout(h, p=self.drop_ratio, training=self.training)
+                dropped_h = F.dropout(h, p=self.drop_ratio, training=self.training)
+                if drop_mask is not None:
+                    h = drop_mask.view(-1, 1) * dropped_h + torch.logical_not(drop_mask).view(-1, 1) * h
+                else:
+                    h = dropped_h
             message = self.build_message_from_output(g, h)
             h_list.append(h)
 
@@ -111,6 +115,11 @@ class MultiLayerMessagePassing(nn.Module, metaclass=ABCMeta):
             repr = 0
             for layer in range(self.num_layers):
                 repr += h_list[layer]
+        elif self.JK == "mean":
+            repr = 0
+            for layer in range(self.num_layers):
+                repr += h_list[layer]
+            repr = repr/self.num_layers
         else:
             repr = h_list
         return repr
@@ -118,13 +127,13 @@ class MultiLayerMessagePassing(nn.Module, metaclass=ABCMeta):
 
 class MultiLayerMessagePassingVN(MultiLayerMessagePassing):
     def __init__(
-        self,
-        num_layers,
-        inp_dim,
-        out_dim,
-        drop_ratio=None,
-        JK="last",
-        batch_norm=True,
+            self,
+            num_layers,
+            inp_dim,
+            out_dim,
+            drop_ratio=None,
+            JK="last",
+            batch_norm=True,
     ):
         super().__init__(
             num_layers, inp_dim, out_dim, drop_ratio, JK, batch_norm
@@ -166,10 +175,10 @@ class MultiLayerMessagePassingVN(MultiLayerMessagePassing):
 
             if layer < self.num_layers - 1:
                 vnode_emb_temp = (
-                    scatter(
-                        h, batch_node_segment, dim=0, dim_size=g.batch_size
-                    )
-                    + vnode_embed
+                        scatter(
+                            h, batch_node_segment, dim=0, dim_size=g.batch_size
+                        )
+                        + vnode_embed
                 )
 
                 vnode_embed = F.dropout(

@@ -172,6 +172,7 @@ def ConstructNodeCls(
         to_undirected=True,
         process_label_func=to_bin_cls_func,
         walk_length=kwargs["walk_length"],
+        single_prompt_edge=kwargs["single_prompt_edge"],
     )
 
 

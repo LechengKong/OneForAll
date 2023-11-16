@@ -70,10 +70,10 @@ class SingleHeadAtt(torch.nn.Module):
 
 
 class BinGraphModel(torch.nn.Module):
-    def __init__(self, model, outdim, task_dim, add_rwpe=None):
+    def __init__(self, model, outdim, task_dim, add_rwpe=None, dropout=0.0):
         super().__init__()
         self.model = model
-        self.mlp = MLP([outdim, 2 * outdim, outdim, task_dim])
+        self.mlp = MLP([outdim, 2 * outdim, outdim, task_dim], dropout=dropout)
         if add_rwpe is not None:
             self.rwpe = AddRandomWalkPE(add_rwpe)
             self.edge_rwpe_prior = torch.nn.Parameter(
@@ -97,7 +97,7 @@ class BinGraphModel(torch.nn.Module):
                     ],
                     dim=-1,
                 )
-        emb = self.model(g)
+        emb = self.model(g, g.feat_node_mask)
         class_emb = emb[g.true_nodes_mask]
         # print(class_emb)
         res = self.mlp(class_emb)
@@ -105,10 +105,10 @@ class BinGraphModel(torch.nn.Module):
 
 
 class BinGraphAttModel(torch.nn.Module):
-    def __init__(self, model, outdim, task_dim, add_rwpe=None):
+    def __init__(self, model, outdim, task_dim, add_rwpe=None, dropout=0.0):
         super().__init__()
         self.model = model
-        self.mlp = MLP([outdim, 2 * outdim, outdim, task_dim])
+        self.mlp = MLP([outdim, 2 * outdim, outdim, task_dim], dropout=dropout)
         self.att = SingleHeadAtt(outdim)
         if add_rwpe is not None:
             self.rwpe = AddRandomWalkPE(add_rwpe)
@@ -133,7 +133,7 @@ class BinGraphAttModel(torch.nn.Module):
                     ],
                     dim=-1,
                 )
-        emb = torch.stack(self.model(g), dim=1)
+        emb = torch.stack(self.model(g, g.feat_node_mask), dim=1)
         query = g.x.unsqueeze(1)
         emb = self.att(emb, query, emb)[0].squeeze()
 

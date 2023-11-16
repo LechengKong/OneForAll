@@ -37,7 +37,7 @@ class MLP(torch.nn.Module):
             dropout = [dropout] * (len(channel_list) - 1)
             if plain_last:
                 dropout[-1] = 0.0
-        if len(dropout) != len(channel_list) - 1:
+        elif len(dropout) != len(channel_list) - 1:
             raise ValueError(
                 f"Number of dropout values provided ({len(dropout)} does not "
                 f"match the number of layers specified "

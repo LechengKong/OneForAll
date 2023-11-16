@@ -23,8 +23,8 @@ class GraphTextDataset(DatasetWithCollate):
         prompt_graph = self.make_prompted_graph(feature_graph)
         ret_data = self.to_pyg(feature_graph, prompt_graph)
         if (
-            "walk_length" in self.kwargs
-            and self.kwargs["walk_length"] is not None
+                "walk_length" in self.kwargs
+                and self.kwargs["walk_length"] is not None
         ):
             ret_data.rwpe = scipy_rwpe(ret_data, self.kwargs["walk_length"])
         return ret_data
@@ -52,16 +52,16 @@ class GraphTextDataset(DatasetWithCollate):
 
 class SubgraphDataset(GraphTextDataset):
     def __init__(
-        self,
-        pyg_graph,
-        class_emb,
-        data_idx,
-        hop=2,
-        class_mapping=None,
-        to_undirected=False,
-        process_label_func=None,
-        adj=None,
-        **kwargs,
+            self,
+            pyg_graph,
+            class_emb,
+            data_idx,
+            hop=2,
+            class_mapping=None,
+            to_undirected=False,
+            process_label_func=None,
+            adj=None,
+            **kwargs,
     ):
         super().__init__(pyg_graph, process_label_func, **kwargs)
         self.to_undirected = to_undirected
@@ -174,25 +174,28 @@ class SubgraphDataset(GraphTextDataset):
         )
         bin_labels = torch.zeros(prompted_graph.num_nodes, dtype=torch.float)
         prompt_nodes_mask[
-            prompted_graph.num_nodes - len(self.class_emb) :
+        prompted_graph.num_nodes - len(self.class_emb):
         ] = True
-        # noi_node_mask = torch.zeros(prompted_graph.num_nodes, dtype=torch.bool)
-        # noi_node_mask[
-        #     prompted_graph.num_nodes - len(self.class_emb) - 1
-        # ] = True
-        # prompted_graph.noi_node_mask = noi_node_mask
+        noi_node_mask = torch.zeros(prompted_graph.num_nodes, dtype=torch.bool)
+        noi_node_mask[
+            prompted_graph.num_nodes - len(self.class_emb) - 1
+        ] = True
+        prompted_graph.noi_node_mask = noi_node_mask
         prompted_graph.true_nodes_mask = prompt_nodes_mask
         bin_labels[
-            prompted_graph.num_nodes - len(self.class_emb) :
+        prompted_graph.num_nodes - len(self.class_emb):
         ] = feature_graph[-1]
         prompted_graph.bin_labels = bin_labels
         target_node_mask = torch.zeros(
             prompted_graph.num_nodes, dtype=torch.bool
         )
         target_node_mask[feature_graph[-3]] = True
+        feat_node_mask = torch.zeros(prompted_graph.num_nodes, dtype=torch.bool)
+        feat_node_mask[:len(feature_graph[0])] = True
         prompted_graph.target_node_mask = target_node_mask
         prompted_graph.sample_num_nodes = prompted_graph.num_nodes
         prompted_graph.num_classes = len(self.class_emb)
+        prompted_graph.feat_node_mask = feat_node_mask
         # print("text", new_subg)
         return prompted_graph
 
@@ -217,17 +220,17 @@ class SubgraphNopromptDataset(SubgraphDataset):
 
 class SubgraphHierDataset(SubgraphDataset):
     def __init__(
-        self,
-        pyg_graph,
-        class_emb,
-        data_idx,
-        hop=2,
-        class_mapping=None,
-        prompt_feat=None,
-        to_undirected=False,
-        process_label_func=None,
-        adj=None,
-        **kwargs,
+            self,
+            pyg_graph,
+            class_emb,
+            data_idx,
+            hop=2,
+            class_mapping=None,
+            prompt_feat=None,
+            to_undirected=False,
+            process_label_func=None,
+            adj=None,
+            **kwargs,
     ):
         super().__init__(
             pyg_graph,
@@ -265,26 +268,24 @@ class SubgraphHierDataset(SubgraphDataset):
             ],
             dtype=torch.long,
         )
+        virtual_append_edge = [virtual_edge]
+        virtual_edge_type = [torch.zeros(1, dtype=torch.long) + 1,
+                             torch.zeros(int(len(virtual_edge[0]) - 1), dtype=torch.long) + 2]
+        n_virtual_edge = 1
+        if "single_prompt_edge" not in self.kwargs or not self.kwargs["single_prompt_edge"]:
+            virtual_append_edge.append(virtual_edge[[1, 0]])
+            virtual_edge_type.extend([torch.zeros(1, dtype=torch.long) + 3,
+                                      torch.zeros(int(len(virtual_edge[0]) - 1), dtype=torch.long) + 4])
+            n_virtual_edge += 1
         edge_index = torch.cat(
-            [edge_index, virtual_edge, virtual_edge[[1, 0]]],
+            [edge_index] + virtual_append_edge,
             dim=-1,
         )
         e_type = torch.cat(
-            [
-                e_type,
-                torch.zeros(1, dtype=torch.long) + 1,
-                torch.zeros(int(len(virtual_edge[0]) - 1), dtype=torch.long)
-                + 2,
-                torch.zeros(1, dtype=torch.long) + 3,
-                torch.zeros(int(len(virtual_edge[0]) - 1), dtype=torch.long)
-                + 4,
-            ]
+            [e_type] + virtual_edge_type
         )
         edge_feat = torch.cat(
-            [
-                edge_feat,
-                self.g.prompt_edge_feat.repeat([len(virtual_edge[0]) * 2, 1]),
-            ]
+            [edge_feat, self.g.prompt_edge_feat.repeat([len(virtual_edge[0]) * n_virtual_edge, 1])]
         )
         # edge_index = torch.cat([edge_index, edge_index[[1, 0]]], dim=-1)
         new_subg = pyg.data.Data(
@@ -295,18 +296,18 @@ class SubgraphHierDataset(SubgraphDataset):
 
 class SubgraphLinkHierDataset(SubgraphHierDataset):
     def __init__(
-        self,
-        pyg_graph,
-        class_emb,
-        edges,
-        remove_edge=False,
-        hop=2,
-        class_mapping=None,
-        prompt_feat=None,
-        to_undirected=False,
-        process_label_func=None,
-        adj=None,
-        **kwargs,
+            self,
+            pyg_graph,
+            class_emb,
+            edges,
+            remove_edge=False,
+            hop=2,
+            class_mapping=None,
+            prompt_feat=None,
+            to_undirected=False,
+            process_label_func=None,
+            adj=None,
+            **kwargs,
     ):
         super().__init__(
             pyg_graph,
@@ -389,18 +390,18 @@ class SubgraphNopromptLinkDataset(SubgraphLinkHierDataset):
 
 class SubgraphKGHierDataset(SubgraphHierDataset):
     def __init__(
-        self,
-        pyg_graph,
-        class_emb,
-        edges,
-        remove_edge=False,
-        hop=2,
-        class_mapping=None,
-        prompt_feat=None,
-        to_undirected=False,
-        process_label_func=None,
-        adj=None,
-        **kwargs,
+            self,
+            pyg_graph,
+            class_emb,
+            edges,
+            remove_edge=False,
+            hop=2,
+            class_mapping=None,
+            prompt_feat=None,
+            to_undirected=False,
+            process_label_func=None,
+            adj=None,
+            **kwargs,
     ):
         super().__init__(
             pyg_graph,
@@ -441,7 +442,7 @@ class SubgraphKGHierDataset(SubgraphHierDataset):
         node_mask = self.index_to_mask(neighbors, size=self.g.num_nodes)
 
         edge_mask = (
-            node_mask[self.g.edge_index[0]] & node_mask[self.g.edge_index[1]]
+                node_mask[self.g.edge_index[0]] & node_mask[self.g.edge_index[1]]
         )
         if self.remove_edge:
             index_mask = torch.ones(
@@ -487,14 +488,14 @@ class SubgraphKGHierDataset(SubgraphHierDataset):
 
 class GraphListDataset(GraphTextDataset):
     def __init__(
-        self,
-        graphs,
-        class_embs,
-        prompt_edge_feat,
-        data_idx,
-        process_label_func=None,
-        single_prompt_edge=False,
-        **kwargs,
+            self,
+            graphs,
+            class_embs,
+            prompt_edge_feat,
+            data_idx,
+            process_label_func=None,
+            single_prompt_edge=False,
+            **kwargs,
     ):
         super().__init__(graphs, process_label_func, **kwargs)
         self.class_emb = class_embs
@@ -586,11 +587,11 @@ class GraphListDataset(GraphTextDataset):
             prompted_graph.num_nodes, dtype=torch.bool
         )
         true_nodes_mask[
-            prompted_graph.num_nodes - len(feature_graph[-3]) :
+        prompted_graph.num_nodes - len(feature_graph[-3]):
         ] = True
         bin_labels = torch.zeros(prompted_graph.num_nodes, dtype=torch.float)
         bin_labels[
-            prompted_graph.num_nodes - len(feature_graph[-3]) :
+        prompted_graph.num_nodes - len(feature_graph[-3]):
         ] = feature_graph[-1]
         # noi_node_mask = torch.zeros(prompted_graph.num_nodes, dtype=torch.bool)
         # noi_node_mask[
@@ -602,10 +603,13 @@ class GraphListDataset(GraphTextDataset):
             prompted_graph.num_nodes, dtype=torch.bool
         )
         target_node_mask[: feature_graph[-4]] = True
+        feat_node_mask = torch.zeros(prompted_graph.num_nodes, dtype=torch.bool)
+        feat_node_mask[:len(feature_graph[0])] = True
         prompted_graph.target_node_mask = target_node_mask
         prompted_graph.true_nodes_mask = true_nodes_mask
         prompted_graph.sample_num_nodes = prompted_graph.num_nodes
         prompted_graph.num_classes = len(feature_graph[-3])
+        prompted_graph.feat_node_mask = feat_node_mask
         return prompted_graph
 
 
@@ -636,15 +640,15 @@ class GraphListNopromptDataset(GraphListDataset):
 
 class GraphListHierDataset(GraphListDataset):
     def __init__(
-        self,
-        graphs,
-        class_embs,
-        prompt_edge_feat,
-        prompt_text_feat,
-        data_idx,
-        process_label_func=None,
-        single_prompt_edge=False,
-        **kwargs,
+            self,
+            graphs,
+            class_embs,
+            prompt_edge_feat,
+            prompt_text_feat,
+            data_idx,
+            process_label_func=None,
+            single_prompt_edge=False,
+            **kwargs,
     ):
         super().__init__(
             graphs,
@@ -728,21 +732,21 @@ class GraphListHierDataset(GraphListDataset):
 
 class GraphListHierFSDataset(GraphListDataset):
     def __init__(
-        self,
-        graphs,
-        class_embs,
-        prompt_edge_feat,
-        prompt_text_feat,
-        data_idx,
-        process_label_func=None,
-        single_prompt_edge=False,
-        class_ind=None,
-        max_sample=10,
-        shot=None,
-        reuse=False,
-        use_class_emb=False,
-        target_class=None,
-        **kwargs,
+            self,
+            graphs,
+            class_embs,
+            prompt_edge_feat,
+            prompt_text_feat,
+            data_idx,
+            process_label_func=None,
+            single_prompt_edge=False,
+            class_ind=None,
+            max_sample=10,
+            shot=None,
+            reuse=False,
+            use_class_emb=False,
+            target_class=None,
+            **kwargs,
     ):
         super().__init__(
             graphs,
@@ -777,8 +781,8 @@ class GraphListHierFSDataset(GraphListDataset):
             class_ind = torch.randint(0, self.num_classes, (1,))
         if self.shot is None:
             while (
-                len(self.true_can[class_ind]) <= 1
-                or len(self.false_can[class_ind]) <= 1
+                    len(self.true_can[class_ind]) <= 1
+                    or len(self.false_can[class_ind]) <= 1
             ):
                 class_ind = torch.randint(0, self.num_classes, (1,))
             c_max_sample = min(
@@ -789,8 +793,8 @@ class GraphListHierFSDataset(GraphListDataset):
             )
         else:
             while (
-                len(self.true_can[class_ind]) <= self.shot
-                or len(self.false_can[class_ind]) <= self.shot
+                    len(self.true_can[class_ind]) <= self.shot
+                    or len(self.false_can[class_ind]) <= self.shot
             ):
                 class_ind = torch.randint(0, self.num_classes, (1,))
             num_sample = self.shot + 1
@@ -1098,13 +1102,13 @@ class GraphListHierFSDataset(GraphListDataset):
             prompted_graph.num_nodes, dtype=torch.bool
         )
         true_nodes_mask[
-            prompted_graph.num_nodes - len(feature_graph[1]) * 2 :
+        prompted_graph.num_nodes - len(feature_graph[1]) * 2:
         ] = True
         bin_labels = torch.zeros(prompted_graph.num_nodes, dtype=torch.float)
         bin_labels[
-            prompted_graph.num_nodes
-            - len(feature_graph[1]) * 2 : prompted_graph.num_nodes
-            - len(feature_graph[1])
+        prompted_graph.num_nodes
+        - len(feature_graph[1]) * 2: prompted_graph.num_nodes
+                                     - len(feature_graph[1])
         ] = 1
         # bin_labels[prompted_graph.num_nodes - len(feature_graph[1]) :] = 0
         prompted_graph.bin_labels = bin_labels
@@ -1122,9 +1126,9 @@ class GraphListHierFSDataset(GraphListDataset):
         true_nodes_mask = torch.zeros(
             prompted_graph.num_nodes, dtype=torch.bool
         )
-        true_nodes_mask[prompted_graph.num_nodes - 1 :] = True
+        true_nodes_mask[prompted_graph.num_nodes - 1:] = True
         bin_labels = torch.zeros(prompted_graph.num_nodes, dtype=torch.float)
-        bin_labels[prompted_graph.num_nodes - 1 :] = prompted_graph.y
+        bin_labels[prompted_graph.num_nodes - 1:] = prompted_graph.y
         # bin_labels[prompted_graph.num_nodes - len(feature_graph[1]) :] = 0
         prompted_graph.bin_labels = bin_labels
         target_node_mask = torch.zeros(
@@ -1140,18 +1144,18 @@ class GraphListHierFSDataset(GraphListDataset):
 
 class GraphListHierFixDataset(GraphListDataset):
     def __init__(
-        self,
-        graphs,
-        class_embs,
-        prompt_edge_feat,
-        prompt_text_feat,
-        data_idx,
-        process_label_func=None,
-        single_prompt_edge=False,
-        class_ind=None,
-        shot=10,
-        use_class_emb=False,
-        **kwargs,
+            self,
+            graphs,
+            class_embs,
+            prompt_edge_feat,
+            prompt_text_feat,
+            data_idx,
+            process_label_func=None,
+            single_prompt_edge=False,
+            class_ind=None,
+            shot=10,
+            use_class_emb=False,
+            **kwargs,
     ):
         super().__init__(
             graphs,
@@ -1240,9 +1244,9 @@ class GraphListHierFixDataset(GraphListDataset):
             [feature_nodes_indices, prompt_nodes_indices], dim=0
         )
         valid_label_ind = (
-            (true_label == true_label).nonzero(as_tuple=True)[1]
-            + total_num_nodes
-            + len(all_graphs)
+                (true_label == true_label).nonzero(as_tuple=True)[1]
+                + total_num_nodes
+                + len(all_graphs)
         )
         query_prompt_edge = torch.stack(
             [
@@ -1337,11 +1341,11 @@ class GraphListHierFixDataset(GraphListDataset):
             prompted_graph.num_nodes, dtype=torch.bool
         )
         true_nodes_mask[
-            prompted_graph.num_nodes - len(feature_graph[-2]) :
+        prompted_graph.num_nodes - len(feature_graph[-2]):
         ] = True
         bin_labels = torch.zeros(prompted_graph.num_nodes, dtype=torch.float)
         bin_labels[
-            prompted_graph.num_nodes - len(feature_graph[-2]) :
+        prompted_graph.num_nodes - len(feature_graph[-2]):
         ] = feature_graph[-1]
         prompted_graph.bin_labels = bin_labels
         target_node_mask = torch.zeros(
@@ -1357,22 +1361,22 @@ class GraphListHierFixDataset(GraphListDataset):
 
 class FewShotSubgraphDataset(SubgraphDataset):
     def __init__(
-        self,
-        pyg_graph,
-        class_emb,
-        data_idx,
-        n_way: int,
-        k_shot: int,
-        q_query: int,
-        datamanager: FewShotDataManager,
-        mode: int,
-        hop=2,
-        class_mapping=None,
-        prompt_feat=None,
-        to_undirected=False,
-        adj=None,
-        single_prompt_edge=False,
-        **kwargs,
+            self,
+            pyg_graph,
+            class_emb,
+            data_idx,
+            n_way: int,
+            k_shot: int,
+            q_query: int,
+            datamanager: FewShotDataManager,
+            mode: int,
+            hop=2,
+            class_mapping=None,
+            prompt_feat=None,
+            to_undirected=False,
+            adj=None,
+            single_prompt_edge=False,
+            **kwargs,
     ):
         super().__init__(
             pyg_graph,
@@ -1523,7 +1527,7 @@ class FewShotSubgraphDataset(SubgraphDataset):
             feat, edge_index, y=label, edge_type=e_type, edge_attr=edge_feat
         )
         true_nodes_mask = torch.zeros(new_subg.num_nodes, dtype=torch.bool)
-        true_nodes_mask[-self.n_way :] = True
+        true_nodes_mask[-self.n_way:] = True
         target_node_mask = torch.zeros(new_subg.num_nodes, dtype=torch.bool)
         target_node_mask[new_node_id] = True
         h_node_mask = torch.zeros(new_subg.num_nodes, dtype=torch.bool)
@@ -1784,10 +1788,10 @@ class FewShotNCDataset(FewShotSubgraphDataset):
             feat, edge_index, y=label, edge_type=e_type, edge_attr=edge_feat
         )
         true_nodes_mask = torch.zeros(new_subg.num_nodes, dtype=torch.bool)
-        true_nodes_mask[nodes_pt[-1] : nodes_pt[-1] + self.n_way] = True
+        true_nodes_mask[nodes_pt[-1]: nodes_pt[-1] + self.n_way] = True
         assert (true_nodes_mask == True).sum() == self.n_way
         h_node_mask = torch.zeros(new_subg.num_nodes, dtype=torch.bool)
-        h_node_mask[nodes_pt[-1] + self.n_way :] = True
+        h_node_mask[nodes_pt[-1] + self.n_way:] = True
         target_node_mask = torch.zeros(new_subg.num_nodes, dtype=torch.bool)
         target_node_mask[new_node_id] = True
         spt_nodes_mask = torch.zeros(new_subg.num_nodes, dtype=torch.bool)
@@ -1874,7 +1878,7 @@ class ZeroShotNCDataset(FewShotSubgraphDataset):
             feat, edge_index, y=label, edge_type=e_type, edge_attr=edge_feat
         )
         true_nodes_mask = torch.zeros(new_subg.num_nodes, dtype=torch.bool)
-        true_nodes_mask[nodes_pt[-1] : -1] = True
+        true_nodes_mask[nodes_pt[-1]: -1] = True
         assert (true_nodes_mask == True).sum() == self.n_way
         h_node_mask = torch.zeros(new_subg.num_nodes, dtype=torch.bool)
         h_node_mask[-1] = True
@@ -1894,24 +1898,24 @@ class ZeroShotNCDataset(FewShotSubgraphDataset):
 
 class FewShotKGHierDataset(FewShotSubgraphDataset):
     def __init__(
-        self,
-        pyg_graph,
-        class_emb,
-        data_idx,
-        n_way,
-        k_shot,
-        q_query,
-        datamanager: FewShotDataManager,
-        mode,
-        edges,  # all edges in the graph
-        fs_edges,  # edges that belongs to specific classes for few-shot
-        fs_edge_types,
-        hop=2,
-        prompt_feat=None,
-        to_undirected=False,
-        single_prompt_edge=True,
-        adj=None,
-        **kwargs,
+            self,
+            pyg_graph,
+            class_emb,
+            data_idx,
+            n_way,
+            k_shot,
+            q_query,
+            datamanager: FewShotDataManager,
+            mode,
+            edges,  # all edges in the graph
+            fs_edges,  # edges that belongs to specific classes for few-shot
+            fs_edge_types,
+            hop=2,
+            prompt_feat=None,
+            to_undirected=False,
+            single_prompt_edge=True,
+            adj=None,
+            **kwargs,
     ):
         self.g = pyg_graph
         self.kwargs = kwargs
@@ -2115,10 +2119,10 @@ class FewShotKGHierDataset(FewShotSubgraphDataset):
             feat, edge_index, y=label, edge_type=e_type, edge_attr=edge_feat
         )
         true_nodes_mask = torch.zeros(new_subg.num_nodes, dtype=torch.bool)
-        true_nodes_mask[nodes_pt[-1] : nodes_pt[-1] + self.n_way] = True
+        true_nodes_mask[nodes_pt[-1]: nodes_pt[-1] + self.n_way] = True
         assert (true_nodes_mask == True).sum() == self.n_way
         h_node_mask = torch.zeros(new_subg.num_nodes, dtype=torch.bool)
-        h_node_mask[nodes_pt[-1] + self.n_way :] = True
+        h_node_mask[nodes_pt[-1] + self.n_way:] = True
         target_node_mask = torch.zeros(new_subg.num_nodes, dtype=torch.bool)
         target_node_mask[new_node_id] = True
         spt_nodes_mask = torch.zeros(new_subg.num_nodes, dtype=torch.bool)
@@ -2247,10 +2251,10 @@ class FewShotKGDataset(FewShotKGHierDataset):
             feat, edge_index, y=label, edge_type=e_type, edge_attr=edge_feat
         )
         true_nodes_mask = torch.zeros(new_subg.num_nodes, dtype=torch.bool)
-        true_nodes_mask[nodes_pt[-1] : nodes_pt[-1] + self.n_way] = True
+        true_nodes_mask[nodes_pt[-1]: nodes_pt[-1] + self.n_way] = True
         assert (true_nodes_mask == True).sum() == self.n_way
         h_node_mask = torch.zeros(new_subg.num_nodes, dtype=torch.bool)
-        h_node_mask[nodes_pt[-1] + self.n_way :] = True
+        h_node_mask[nodes_pt[-1] + self.n_way:] = True
         target_node_mask = torch.zeros(new_subg.num_nodes, dtype=torch.bool)
         target_node_mask[new_node_id] = True
         spt_nodes_mask = torch.zeros(new_subg.num_nodes, dtype=torch.bool)
@@ -2346,10 +2350,10 @@ class ZeroShotKGDataset(FewShotKGHierDataset):
             feat, edge_index, y=label, edge_type=e_type, edge_attr=edge_feat
         )
         true_nodes_mask = torch.zeros(new_subg.num_nodes, dtype=torch.bool)
-        true_nodes_mask[nodes_pt[-1] : nodes_pt[-1] + self.n_way] = True
+        true_nodes_mask[nodes_pt[-1]: nodes_pt[-1] + self.n_way] = True
         assert (true_nodes_mask == True).sum() == self.n_way
         h_node_mask = torch.zeros(new_subg.num_nodes, dtype=torch.bool)
-        h_node_mask[nodes_pt[-1] + self.n_way :] = True
+        h_node_mask[nodes_pt[-1] + self.n_way:] = True
         target_node_mask = torch.zeros(new_subg.num_nodes, dtype=torch.bool)
         target_node_mask[new_node_id] = True
         spt_nodes_mask = torch.zeros(new_subg.num_nodes, dtype=torch.bool)
@@ -2366,13 +2370,13 @@ class ZeroShotKGDataset(FewShotKGHierDataset):
 
 class MultiDataset(DatasetWithCollate):
     def __init__(
-        self,
-        datas,
-        dataset_multiple=1,
-        window_size=3,
-        patience=3,
-        min_ratio=0.1,
-        mode="max",
+            self,
+            datas,
+            dataset_multiple=1,
+            window_size=3,
+            patience=3,
+            min_ratio=0.1,
+            mode="max",
     ):
         self.datas = datas
         self.sizes = np.array([len(d) for d in datas])
@@ -2387,7 +2391,7 @@ class MultiDataset(DatasetWithCollate):
         self.dataset_multiple = dataset_multiple
         if not isinstance(self.dataset_multiple, list):
             self.dataset_multiple = (
-                np.zeros(len(self.sizes)) + self.dataset_multiple
+                    np.zeros(len(self.sizes)) + self.dataset_multiple
             )
         self.min_ratio = min_ratio
         if isinstance(self.min_ratio, float):
@@ -2406,8 +2410,8 @@ class MultiDataset(DatasetWithCollate):
         self.size_seg = np.cumsum(self.aug_sizes)
         self.ind2dataset = np.arange(len(self.datas)).repeat(self.aug_sizes)
         self.sample_ind = (
-            np.random.rand(len(self.ind2dataset))
-            * self.sizes.repeat(self.aug_sizes)
+                np.random.rand(len(self.ind2dataset))
+                * self.sizes.repeat(self.aug_sizes)
         ).astype(int)
         self.data_start_index = np.r_[0, self.size_seg[:-1]]
 
@@ -2431,12 +2435,12 @@ class MultiDataset(DatasetWithCollate):
             if len(self.performance_record) < self.window_size[i]:
                 continue
             vals = [entry[i] for entry in self.performance_record][
-                -int(self.window_size[i]) :
-            ]
+                   -int(self.window_size[i]):
+                   ]
             vals = np.array(vals)
             mean = vals.mean()
             if self.mode[0] * (metric[i] > mean) + (1 - self.mode[0]) * (
-                not metric[i] > mean
+                    not metric[i] > mean
             ):
                 self.inpatience[i] = 0
             else:

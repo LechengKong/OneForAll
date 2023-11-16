@@ -29,6 +29,9 @@ arxiv_noprompt: &arxiv_noprompt
 
 cora_node: &cora_node
   <<: *E2E-node
+  args:
+    walk_length: null
+    single_prompt_edge: False
   dataset_name: cora
   dataset_splitter: CiteSplitter
   process_label_func: process_int_label
