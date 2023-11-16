@@ -74,6 +74,7 @@ class DataModule(LightningDataModule):
                 num_workers=num_workers,
                 collate_fn=data.get_collate_fn(),
                 drop_last=drop_last,
+                pin_memory=True
             )
         if isinstance(data, PygDataset):
             return PygDataloader(
@@ -83,6 +84,7 @@ class DataModule(LightningDataModule):
                 sampler=sampler,
                 num_workers=num_workers,
                 drop_last=drop_last,
+                pin_memory=True
             )
 
     def train_dataloader(self):

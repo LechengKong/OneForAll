@@ -70,9 +70,10 @@ class SingleHeadAtt(torch.nn.Module):
 
 
 class BinGraphModel(torch.nn.Module):
-    def __init__(self, model, outdim, task_dim, add_rwpe=None):
+    def __init__(self, model, indim, outdim, task_dim, add_rwpe=None):
         super().__init__()
         self.model = model
+        self.in_proj = nn.Linear(indim, outdim)
         self.mlp = MLP([outdim, 2 * outdim, outdim, task_dim])
         if add_rwpe is not None:
             self.rwpe = AddRandomWalkPE(add_rwpe)
@@ -84,8 +85,14 @@ class BinGraphModel(torch.nn.Module):
             self.walk_length = add_rwpe
         else:
             self.rwpe = None
+    def initial_projection(self, g):
+        g.x = self.in_proj(g.x)
+        g.edge_attr = self.in_proj(g.edge_attr)
+        return g
 
     def forward(self, g):
+        g = self.initial_projection(g)
+
         if self.rwpe is not None:
             with torch.no_grad():
                 rwpe_norm = self.rwpe_normalization(g.rwpe)
@@ -105,9 +112,11 @@ class BinGraphModel(torch.nn.Module):
 
 
 class BinGraphAttModel(torch.nn.Module):
-    def __init__(self, model, outdim, task_dim, add_rwpe=None):
+    def __init__(self, model, indim, outdim, task_dim, add_rwpe=None):
         super().__init__()
         self.model = model
+        self.in_proj = nn.Linear(indim, outdim)
+
         self.mlp = MLP([outdim, 2 * outdim, outdim, task_dim])
         self.att = SingleHeadAtt(outdim)
         if add_rwpe is not None:
@@ -121,7 +130,13 @@ class BinGraphAttModel(torch.nn.Module):
         else:
             self.rwpe = None
 
+    def initial_projection(self, g):
+        g.x = self.in_proj(g.x)
+        g.edge_attr = self.in_proj(g.edge_attr)
+        return g
+
     def forward(self, g):
+        g = self.initial_projection(g)
         if self.rwpe is not None:
             with torch.no_grad():
                 rwpe_norm = self.rwpe_normalization(g.rwpe)
