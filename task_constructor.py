@@ -473,7 +473,8 @@ none_process_label = None
 
 
 class UnifiedTaskConstructor:
-    def __init__(self, tasks, encoder, task_config_lookup, batch_size=256, sample_size=-1):
+    def __init__(self, tasks, encoder, task_config_lookup, root="cache_data", batch_size=256, sample_size=-1):
+        self.root = root
         self.tasks = tasks
         self.encoder = encoder
         self.task_config_lookup = task_config_lookup
@@ -504,7 +505,7 @@ class UnifiedTaskConstructor:
         args = config["args"]
         if data not in self.dataset:
             self.dataset[data] = name2dataset[data](
-                data, sentence_encoder=self.encoder
+                data, root=self.root, encoder=self.encoder
             )
 
         # for e2e and few-shot and zero-shot graph tasks

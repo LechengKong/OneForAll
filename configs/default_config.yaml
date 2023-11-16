@@ -19,3 +19,4 @@ eval_sample_size : -1
 rwpe: 
 task_names:
   - arxiv
+llm_name: "ST"

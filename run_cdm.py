@@ -1,9 +1,7 @@
 import argparse
 import os
 import torch
-import torch_geometric as pyg
 from pytorch_lightning.loggers import WandbLogger
-
 from gp.utils.utils import (
     load_yaml,
     combine_dict,
@@ -28,14 +26,13 @@ from utils import (
     SentenceEncoder,
     MultiApr,
     MultiAuc,
+    ENCODER_DIM_DICT,
 )
 
 from task_constructor import UnifiedTaskConstructor
 
-
 def main(params):
-    encoder = SentenceEncoder("ST")
-
+    encoder = SentenceEncoder(params.llm_name)
     task_config_lookup = load_yaml(
         os.path.join(os.path.dirname(__file__), "configs", "task_config.yaml")
     )
@@ -45,13 +42,22 @@ def main(params):
     else:
         task_names = params.task_names
 
+    root = "cache_data"
+    if params.llm_name != "ST":
+        root = f"cache_data_{params.llm_name}"
+
     tasks = UnifiedTaskConstructor(
         task_names,
         encoder,
         task_config_lookup,
+        root=root,
         batch_size=params.batch_size,
     )
+    # remove llm model
+    encoder.flush_model()
 
+
+    in_dim = ENCODER_DIM_DICT[params.llm_name]
     out_dim = 768 + (params.rwpe if params.rwpe is not None else 0)
     # out_dim = 768
 
@@ -121,7 +127,7 @@ def main(params):
         JK=params.JK,
     )
     bin_model = BinGraphAttModel if params.JK == "none" else BinGraphModel
-    model = bin_model(gnn, out_dim, 1, add_rwpe=params.rwpe, dropout=params.dropout)
+    model = bin_model(gnn, in_dim, out_dim, 1, add_rwpe=params.rwpe, dropout=params.dropout)
     optimizer = torch.optim.Adam(
         model.parameters(), lr=params.lr, weight_decay=params.l2
     )
@@ -144,7 +150,7 @@ def main(params):
 
     wandb_logger = WandbLogger(
         project=params.log_project,
-        name=params.exp_name,
+        name=f"{params.exp_name}_{params.llm_name}",
         save_dir=params.exp_dir,
         offline=params.offline_log,
     )
@@ -155,7 +161,7 @@ def main(params):
         params.datamodule,
         metrics,
         params.num_epochs,
-        save_model=False,
+        save_model=True,
         load_best=False,
         reload_freq=1,
         test_rep=params.test_rep,

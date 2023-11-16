@@ -2,10 +2,8 @@ import os
 import os.path as osp
 import torch
 import numpy as np
-from tqdm import tqdm
 from torch_geometric.data import InMemoryDataset, Dataset
 
-from gp.utils.utils import SmartTimer
 
 
 def safe_mkdir(path):
@@ -28,8 +26,8 @@ class OFAPygDataset(InMemoryDataset):
     def __init__(
         self,
         name,
+        encoder,
         root="./cache_data",
-        sentence_encoder=None,
         load_text=False,
         load_feat=True,
         transform=None,
@@ -40,9 +38,9 @@ class OFAPygDataset(InMemoryDataset):
         self.name = name
         self.root = root
         self.data_dir = osp.join(self.root, self.name)
-        self.sentence_encoder = sentence_encoder
-        safe_mkdir(self.data_dir)
+        self.encoder = encoder
         super().__init__(self.data_dir, transform, pre_transform)
+        safe_mkdir(self.data_dir)
 
         if load_text:
             self.texts = torch.load(self.processed_paths[1])
@@ -51,11 +49,11 @@ class OFAPygDataset(InMemoryDataset):
         self.side_data = pth_safe_load(self.processed_paths[2])
 
     def data2vec(self, data):
-        if self.sentence_encoder is None:
-            raise NotImplementedError("sentence encoder is not passed")
+        if self.encoder is None:
+            raise NotImplementedError("LLM encoder is not defined")
         if data is None:
             return None
-        embeddings = self.sentence_encoder.encode(data).cpu()
+        embeddings = self.encoder.encode(data).cpu()
         return embeddings
 
     @property
@@ -81,7 +79,9 @@ class OFAPygDataset(InMemoryDataset):
     def add_text_emb(self, data_list, texts_emb):
         pass
 
+
     def process(self):
+        self.encoder.get_model()
         data_list, texts, side_data = self.gen_data()
 
         texts_emb = self.text2feature(texts)
@@ -96,12 +96,12 @@ class OFAPygDataset(InMemoryDataset):
         torch.save((data, slices), self.processed_paths[0])
 
 
-class OFAPygSTDataset(Dataset):
+class OFAPygSTDataset(OFAPygDataset):
     def __init__(
         self,
         name,
+        encoder,
         root="./cache_data",
-        sentence_encoder=None,
         load_text=False,
         load_feat=True,
         transform=None,
@@ -110,9 +110,9 @@ class OFAPygSTDataset(Dataset):
     ):
 
         self.name = name
+        self.encoder = encoder
         self.root = root
         self.data_dir = osp.join(self.root, self.name)
-        self.sentence_encoder = sentence_encoder
         safe_mkdir(self.data_dir)
         super().__init__(self.data_dir, transform, pre_transform)
 
@@ -123,23 +123,6 @@ class OFAPygSTDataset(Dataset):
         self.global_data = pth_safe_load(self.processed_paths[2])
 
         self.convert_data()
-
-    def data2vec(self, data):
-        if self.sentence_encoder is None:
-            raise NotImplementedError("sentence encoder is not passed")
-        if data is None:
-            return None
-        embeddings = self.sentence_encoder.encode(data).cpu()
-
-        return embeddings
-
-    @property
-    def num_classes(self):
-        return self.__num_classes__
-
-    @property
-    def raw_file_names(self):
-        return []
 
     @property
     def processed_file_names(self):
@@ -154,23 +137,12 @@ class OFAPygSTDataset(Dataset):
     def len(self):
         return 0
 
-    def text2feature(self, texts):
-        if isinstance(texts[0], str):
-            return self.data2vec(texts)
-        return [self.text2feature(t) for t in texts]
-
-    def gen_data(self):
-        pass
-
-    def add_text_emb(self, data_list, texts_emb):
-        pass
-
     def convert_data(self):
         pass
 
     def process(self):
+        self.encoder.get_model()
         data_list, texts, side_data = self.gen_data()
-
         texts_emb = self.text2feature(texts)
         torch.save(texts, self.processed_paths[0])
         if side_data is not None:
