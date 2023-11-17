@@ -5,7 +5,6 @@ import numpy as np
 from torch_geometric.data import InMemoryDataset, Dataset
 
 
-
 def safe_mkdir(path):
     if not osp.exists(path):
         os.mkdir(path)
@@ -24,15 +23,15 @@ def pth_safe_load(path):
 
 class OFAPygDataset(InMemoryDataset):
     def __init__(
-        self,
-        name,
-        encoder,
-        root="./cache_data",
-        load_text=False,
-        load_feat=True,
-        transform=None,
-        pre_transform=None,
-        meta_dict=None,
+            self,
+            name,
+            encoder,
+            root="./cache_data",
+            load_text=False,
+            load_feat=True,
+            transform=None,
+            pre_transform=None,
+            meta_dict=None,
     ):
 
         self.name = name
@@ -79,7 +78,6 @@ class OFAPygDataset(InMemoryDataset):
     def add_text_emb(self, data_list, texts_emb):
         pass
 
-
     def process(self):
         self.encoder.get_model()
         data_list, texts, side_data = self.gen_data()
@@ -95,18 +93,33 @@ class OFAPygDataset(InMemoryDataset):
         print("Saving...")
         torch.save((data, slices), self.processed_paths[0])
 
+    def get_task_map(self):
+        pass
+
+    def get_prompt_text_feat(self, task_name):
+        task_map = self.get_task_map()
+        if task_name not in self.side_data:
+            raise NotImplementedError(
+                "Task " + task_name + " is not implemented for " + self.name
+                + " dataset the implemented tasks are " + str(task_map.keys()))
+        feat_ind = task_map[task_name]
+        prompt_feats = {}
+        for k in feat_ind:
+            prompt_feats[k] = getattr(self.data, feat_ind[k][0])[feat_ind[k][1]]
+        return prompt_feats
+
 
 class OFAPygSTDataset(OFAPygDataset):
     def __init__(
-        self,
-        name,
-        encoder,
-        root="./cache_data",
-        load_text=False,
-        load_feat=True,
-        transform=None,
-        pre_transform=None,
-        meta_dict=None,
+            self,
+            name,
+            encoder,
+            root="./cache_data",
+            load_text=False,
+            load_feat=True,
+            transform=None,
+            pre_transform=None,
+            meta_dict=None,
     ):
 
         self.name = name

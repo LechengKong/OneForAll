@@ -5,12 +5,9 @@ import json
 from data.arxiv.gen_data import ArxivOFADataset
 from data.Cora.gen_data import CoraOFADataset
 from data.Pubmed.gen_data import PubmedOFADataset
-from data.WN18RR.gen_data import WN18RROFADataset
-from data.FB15K237.gen_data import FB15K237OFADataset
+from data.KG.gen_data import KGOFADataset
 from data.wikics.gen_data import WikiCSOFADataset
-from data.chemblpre.gen_data import CHEMBLPREOFADataset
-from data.chempcba.gen_data import CHEMPCBAOFADataset
-from data.chemhiv.gen_data import CHEMHIVOFADataset
+from data.chemmol.gen_data import MolOFADataset
 
 from ofa_datasets import (
     GraphListDataset,
@@ -55,12 +52,12 @@ name2dataset = {
     "arxiv": ArxivOFADataset,
     "cora": CoraOFADataset,
     "pubmed": PubmedOFADataset,
-    "WN18RR": WN18RROFADataset,
-    "FB15K237": FB15K237OFADataset,
+    "WN18RR": KGOFADataset,
+    "FB15K237": KGOFADataset,
     "wikics": WikiCSOFADataset,
-    "chemblpre": CHEMBLPREOFADataset,
-    "chempcba": CHEMPCBAOFADataset,
-    "chemhiv": CHEMHIVOFADataset,
+    "chemblpre": MolOFADataset,
+    "chempcba": MolOFADataset,
+    "chemhiv": MolOFADataset,
 }
 
 
@@ -146,7 +143,7 @@ def LinkConstructGraph(dataset, split):
 
 
 def make_data(
-    name, data, split_name, metric, eval_func, num_classes, **kwargs
+        name, data, split_name, metric, eval_func, num_classes, **kwargs
 ):
     return DataWithMeta(
         data,
@@ -160,7 +157,7 @@ def make_data(
 
 
 def ConstructNodeCls(
-    name, dataset, split, split_name, to_bin_cls_func, **kwargs
+        name, dataset, split, split_name, to_bin_cls_func, **kwargs
 ):
     text_g = dataset.data
 
@@ -177,7 +174,7 @@ def ConstructNodeCls(
 
 
 def ConstructNodeNopromptCls(
-    name, dataset, split, split_name, to_bin_cls_func, **kwargs
+        name, dataset, split, split_name, to_bin_cls_func, **kwargs
 ):
     text_g = dataset.data
 
@@ -191,7 +188,7 @@ def ConstructNodeNopromptCls(
 
 
 def ConstructLinkCls(
-    name, dataset, split, split_name, to_bin_cls_func, **kwargs
+        name, dataset, split, split_name, to_bin_cls_func, **kwargs
 ):
     text_g = dataset.data
     edges = text_g.edge_index
@@ -211,7 +208,7 @@ def ConstructLinkCls(
 
 
 def ConstructLinkNopromptCls(
-    name, dataset, split, split_name, to_bin_cls_func, **kwargs
+        name, dataset, split, split_name, to_bin_cls_func, **kwargs
 ):
     text_g = dataset.data
     edges = text_g.edge_index
@@ -247,9 +244,8 @@ def ConstructKG(name, dataset, split, split_name, to_bin_cls_func, **kwargs):
 
 
 def ConstructMolCls(
-    name, dataset, split, split_name, to_bin_cls_func, **kwargs
+        name, dataset, split, split_name, to_bin_cls_func, **kwargs
 ):
-
     return GraphListHierDataset(
         dataset,
         dataset.label_text_feat,
@@ -263,9 +259,8 @@ def ConstructMolCls(
 
 
 def ConstructMolNopromptCls(
-    name, dataset, split, split_name, to_bin_cls_func, **kwargs
+        name, dataset, split, split_name, to_bin_cls_func, **kwargs
 ):
-
     return GraphListNopromptDataset(
         dataset,
         dataset.label_text_feat,
@@ -278,7 +273,8 @@ def ConstructMolNopromptCls(
 
 
 def ConstructNCFSZS(
-        dataset, data_manager, n, k, split_name, config, state_name=None, eval_metric=None, eval_func=None, train_flag=False, adj=None, total_task_num=50, undirected_flag=True,  **kwargs
+        dataset, data_manager, n, k, split_name, config, state_name=None, eval_metric=None, eval_func=None,
+        train_flag=False, adj=None, total_task_num=50, undirected_flag=True, **kwargs
 ):
     if config["class_emb_flag"]:
         class_emb = dataset.label_text_feat
@@ -287,8 +283,8 @@ def ConstructNCFSZS(
             len(dataset.label_text_feat), 1
         )
     random_flag = config["random_flag"] if split_name == "train" else None
-    split_name=config["mode"][split_name]
-    data_class = FewShotNCDataset if kwargs["k_shot"]>0 else ZeroShotNCDataset
+    split_name = config["mode"][split_name]
+    data_class = FewShotNCDataset if kwargs["k_shot"] > 0 else ZeroShotNCDataset
     ofa_data = data_class(
         pyg_graph=dataset,
         class_emb=class_emb,
@@ -323,7 +319,8 @@ def ConstructNCFSZS(
 
 
 def ConstructLPFSZS(
-        dataset, data_manager, n, k, split_name, config, state_name=None, eval_metric=None, eval_func=None, train_flag=False, adj=None, total_task_num=50, undirected_flag=True,  **kwargs
+        dataset, data_manager, n, k, split_name, config, state_name=None, eval_metric=None, eval_func=None,
+        train_flag=False, adj=None, total_task_num=50, undirected_flag=True, **kwargs
 ):
     if config["class_emb_flag"]:
         class_emb = dataset.edge_label_feat
@@ -333,7 +330,7 @@ def ConstructLPFSZS(
         )
     random_flag = config["random_flag"] if split_name == "train" else None
     split_name = config["mode"][split_name]
-    data_class = FewShotKGDataset if kwargs["k_shot"]>0 else ZeroShotKGDataset
+    data_class = FewShotKGDataset if kwargs["k_shot"] > 0 else ZeroShotKGDataset
     ofa_data = data_class(
         pyg_graph=dataset,
         class_emb=class_emb,
@@ -369,10 +366,12 @@ def ConstructLPFSZS(
             meta_data={"eval_func": eval_func}
         )
 
+
 def ConstructGCFSZS(
-        dataset, split, split_name, n, k, config, state_name=None, eval_metric=None, eval_func=None, train_flag=False, batch_size=None, **kwargs
+        dataset, split, split_name, n, k, config, state_name=None, eval_metric=None, eval_func=None, train_flag=False,
+        batch_size=None, **kwargs
 ):
-    data_class = GraphListHierFSDataset if kwargs["k_shot"]>0 else GraphListHierDataset
+    data_class = GraphListHierFSDataset if kwargs["k_shot"] > 0 else GraphListHierDataset
     ofa_data = data_class(
         graphs=dataset,
         class_embs=dataset.label_text_feat,
@@ -382,7 +381,7 @@ def ConstructGCFSZS(
         process_label_func=globals()[config["process_label_func"]],
         single_prompt_edge=True,
         walk_length=kwargs["walk_length"],
-        class_ind = dataset.y.view(len(dataset), -1)[split[split_name], 0:1] if kwargs["k_shot"]>0 else None,
+        class_ind=dataset.y.view(len(dataset), -1)[split[split_name], 0:1] if kwargs["k_shot"] > 0 else None,
         shot=k,
         target_class=n,
     )
@@ -399,7 +398,6 @@ def ConstructGCFSZS(
             classes=kwargs["classes"],
             meta_data={"eval_func": eval_func}
         )
-
 
 
 def process_pth_label(embs, label):
@@ -428,8 +426,8 @@ def process_multi_label(embs, label):
 def process_positive_negative_multi_label(embs, label):
     valid_idx = label == label
     label = label[:, valid_idx.view(-1)].detach().clone()
-    valid_idx = valid_idx.repeat(1,2)
-    label = torch.cat([label, 1-label], dim=-1)
+    valid_idx = valid_idx.repeat(1, 2)
+    label = torch.cat([label, 1 - label], dim=-1)
 
     return (
         torch.tensor([[0]]),
@@ -468,6 +466,7 @@ def hiv_zs_class(embs, label):
     #     label.to(torch.long), num_classes=2
     # )
     return label, embs[0:1], label
+
 
 none_process_label = None
 
@@ -524,7 +523,9 @@ class UnifiedTaskConstructor:
             if data in self.edges:
                 args["edges"] = self.edges[data]
             if data not in self.datamanager:
-                self.datamanager[data] = FewShotDataManager(g, args["n_way"], args["k_shot"], args["q_query"], class_split_ratio=args["class_split_ratio"], class_split_lst=self.lr_class_split.get(data))
+                self.datamanager[data] = FewShotDataManager(g, args["n_way"], args["k_shot"], args["q_query"],
+                                                            class_split_ratio=args["class_split_ratio"],
+                                                            class_split_lst=self.lr_class_split.get(data))
         else:
             g = None
 
@@ -562,9 +563,11 @@ class UnifiedTaskConstructor:
                     construct = globals()[config["construct"]]
 
                 if "lr" in config["task_level"]:
-                    eval_data = self.get_lr_eval_data(construct, data, g, config, split, eval_construct_config, eval_args)
+                    eval_data = self.get_lr_eval_data(construct, data, g, config, split, eval_construct_config,
+                                                      eval_args)
                 else:
-                    eval_data = self.get_e2e_eval_data(construct, data, task, split, global_data, config, eval_construct_config, eval_args)
+                    eval_data = self.get_e2e_eval_data(construct, data, task, split, global_data, config,
+                                                       eval_construct_config, eval_args)
 
                 if eval_construct_config["stage"] == "valid":
                     self.valid_dm_set += eval_data
@@ -690,9 +693,3 @@ class UnifiedTaskConstructor:
             "test": self.test_dm_set,
         }
         return text_dataset
-
-
-
-
-
-

@@ -57,7 +57,7 @@ from utils import (
 )
 from data.arxiv.gen_data import ArxivOFADataset
 from data.Cora.gen_data import CoraOFADataset
-from data.WN18RR.gen_data import WN18RROFADataset
+from data.KG.gen_data import WN18RROFADataset
 from data.FB15K237.gen_data import FB15K237OFADataset
 from data.chemblpre.gen_data import CHEMBLPREOFADataset
 from data.chempcba.gen_data import CHEMPCBAOFADataset
