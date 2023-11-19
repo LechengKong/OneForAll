@@ -1,0 +1,116 @@
+E2E-node: &E2E-node
+  eval_set_constructs:
+    - stage: valid
+      split_name: valid
+    - stage: test
+      split_name: test
+    - stage: test
+      split_name: train
+
+arxiv: &arxiv
+  <<: *E2E-node
+  train: arxiv
+
+cora_node: &cora_node
+  <<: *E2E-node
+  train: cora_node
+
+pubmed_node: &pubmed_node
+  <<: *E2E-node
+  train: pubmed_node
+
+wikics: &wikics
+  <<: *E2E-node
+  train: wikics
+
+E2E-link: &E2E-link
+  task_level: e2e_link
+
+cora_link: &cora_link
+  <<: *E2E-link
+  train: cora_link
+  eval_set_constructs:
+    - stage: valid
+      split_name: valid
+      dataset: cora_link_eval
+    - stage: test
+      split_name: test
+      dataset: cora_link_eval
+    - stage: test
+      split_name: train
+      dataset: cora_link
+
+pubmed_link: &pubmed_link
+  <<: *E2E-link
+  train: pubmed_link
+  eval_set_constructs:
+    - stage: valid
+      split_name: valid
+      dataset: pubmed_link_eval
+    - stage: test
+      split_name: test
+      dataset: pubmed_link_eval
+    - stage: test
+      split_name: train
+      dataset: pubmed_link
+
+FB15K237: &FB15K237
+  <<: *E2E-link
+  train: FB15K237
+  eval_set_constructs:
+    - stage: valid
+      split_name: valid
+      dataset: FB15K237_eval
+    - stage: test
+      split_name: test
+      dataset: FB15K237_eval
+    - stage: test
+      split_name: train
+      dataset: FB15K237
+
+WN18RR: &WN18RR
+  <<: *E2E-link
+  train: WN18RR
+  eval_set_constructs:
+    - stage: valid
+      split_name: valid
+      dataset: WN18RR_eval
+    - stage: test
+      split_name: test
+      dataset: WN18RR_eval
+    - stage: test
+      split_name: train
+      dataset: WN18RR
+
+E2E-graph: &E2E-graph
+  task_level: e2e_graph
+  eval_set_constructs:
+    - stage: valid
+      split_name: valid
+    - stage: test
+      split_name: test
+    - stage: test
+      split_name: train
+
+chemblpre: &chemblpre
+  <<: *E2E-graph
+  train: chemblpre
+  eval_set_constructs:
+
+chempcba: &chempcba
+  <<: *E2E-graph
+  train: chempcba
+  eval_set_constructs:
+    - stage: valid
+      split_name: valid
+      dataset: chempcba_eval
+    - stage: test
+      split_name: test
+      dataset: chempcba_eval
+    - stage: test
+      split_name: train
+      dataset: chempcba
+
+chemhiv: &chemhiv
+  <<: *E2E-graph
+  train: chemhiv

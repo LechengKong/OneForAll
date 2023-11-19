@@ -1,0 +1,140 @@
+E2E-node: &E2E-node
+  task_level: e2e_node
+  preprocess: null
+  construct: ConstructNodeCls
+  args:
+    walk_length: null
+    single_prompt_edge: False
+  eval_metric: acc
+  eval_func: classification_func
+
+arxiv: &arxiv
+  <<: *E2E-node
+  dataset_name: arxiv
+  dataset_splitter: ArxivSplitter
+  process_label_func: process_pth_label
+  num_classes: 40
+
+cora_node: &cora_node
+  <<: *E2E-node
+  dataset_name: cora
+  dataset_splitter: CiteSplitter
+  process_label_func: process_int_label
+  num_classes: 7
+
+pubmed_node: &pubmed_node
+  <<: *E2E-node
+  dataset_name: pubmed
+  dataset_splitter: CiteSplitter
+  process_label_func: process_int_label
+  num_classes: 3
+
+wikics: &wikics
+  <<: *E2E-node
+  dataset_name: wikics
+  dataset_splitter: WikiSplitter
+  process_label_func: process_pth_label
+  num_classes: 10
+
+link-eval-args: &link-eval-args
+  remove_edge: False
+  walk_length: null
+
+E2E-link: &E2E-link
+  task_level: e2e_link
+  args:
+    remove_edge: True
+    walk_length: null
+
+E2E-link-cite: &E2E-link-cite
+  <<: *E2E-link
+  preprocess: LinkConstructGraph
+  construct: ConstructLinkCls
+  dataset_splitter: CiteLinkSplitter
+  process_label_func: process_int_label
+  eval_metric: auc
+  eval_func: binary_auc_func
+  num_classes: 2
+
+cora_link: &cora_link
+  <<: *E2E-link-cite
+  dataset_name: cora
+
+cora_link_eval:
+  <<: *cora_link
+  args:
+    <<: *link-eval-args
+
+pubmed_link: &pubmed_link
+  <<: *E2E-link-cite
+  dataset_name: pubmed
+
+pubmed_link_eval:
+  <<: *pubmed_link
+  args:
+    <<: *link-eval-args
+
+E2E-link-KG: &E2E-link-KG
+  <<: *E2E-link
+  dataset_splitter: KGSplitter
+  preprocess: null
+  construct: ConstructKG
+  process_label_func: process_int_label
+  eval_metric: acc
+  eval_func: classification_func
+
+WN18RR: &WN18RR
+  <<: *E2E-link-KG
+  dataset_name: WN18RR
+  num_classes: 11
+
+WN18RR_eval: &WN18RR_eval
+  <<: *WN18RR
+  args:
+    <<: *link-eval-args
+
+FB15K237: &FB15K237
+  <<: *E2E-link-KG
+  dataset_name: FB15K237
+  num_classes: 237
+
+FB15K237_eval: &FB15K237_eval
+  <<: *FB15K237
+  args:
+    <<: *link-eval-args
+
+E2E-graph: &E2E-graph
+  task_level: e2e_graph
+  dataset_splitter: MolSplitter
+  preprocess: null
+  construct: ConstructMolCls
+  args:
+    walk_length: null
+
+chemblpre: &chemblpre
+  <<: *E2E-graph
+  dataset_name: chemblpre
+  process_label_func: process_positive_negative_multi_label
+  eval_metric: apr
+  eval_func: binary_apr_func
+  num_classes: 1295
+
+chempcba: &chempcba
+  <<: *E2E-graph
+  dataset_name: chempcba
+  process_label_func: process_positive_negative_multi_label
+  eval_metric: apr
+  eval_func: binary_apr_func
+  num_classes: 128
+
+chempcba_eval: &chempcba_eval
+  <<: *chempcba
+  process_label_func: process_label_positive_only
+
+chemhiv: &chemhiv
+  <<: *E2E-graph
+  dataset_name: chemhiv
+  process_label_func: process_reverse_binary_label
+  eval_metric: auc
+  eval_func: binary_auc_func
+  num_classes: 2

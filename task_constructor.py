@@ -2,12 +2,9 @@ import torch
 import torch_geometric as pyg
 import json
 
-from data.arxiv.gen_data import ArxivOFADataset
-from data.Cora.gen_data import CoraOFADataset
-from data.Pubmed.gen_data import PubmedOFADataset
 from data.KG.gen_data import KGOFADataset
-from data.wikics.gen_data import WikiCSOFADataset
 from data.chemmol.gen_data import MolOFADataset
+from data.single_graph.gen_data import SingleGraphOFADataset
 
 from ofa_datasets import (
     GraphListDataset,
@@ -49,12 +46,12 @@ from utils import (
 # os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 name2dataset = {
-    "arxiv": ArxivOFADataset,
-    "cora": CoraOFADataset,
-    "pubmed": PubmedOFADataset,
+    "arxiv": SingleGraphOFADataset,
+    "cora": SingleGraphOFADataset,
+    "pubmed": SingleGraphOFADataset,
     "WN18RR": KGOFADataset,
     "FB15K237": KGOFADataset,
-    "wikics": WikiCSOFADataset,
+    "wikics": SingleGraphOFADataset,
     "chemblpre": MolOFADataset,
     "chempcba": MolOFADataset,
     "chemhiv": MolOFADataset,
