@@ -1,5 +1,7 @@
 E2E-node: &E2E-node
   eval_set_constructs:
+    - stage: train
+      split_name: train
     - stage: valid
       split_name: valid
     - stage: test
@@ -9,27 +11,29 @@ E2E-node: &E2E-node
 
 arxiv: &arxiv
   <<: *E2E-node
-  train: arxiv
+  dataset: arxiv
 
 cora_node: &cora_node
   <<: *E2E-node
-  train: cora_node
+  dataset: cora_node
 
 pubmed_node: &pubmed_node
   <<: *E2E-node
-  train: pubmed_node
+  dataset: pubmed_node
 
 wikics: &wikics
   <<: *E2E-node
-  train: wikics
+  dataset: wikics
 
 E2E-link: &E2E-link
   task_level: e2e_link
 
 cora_link: &cora_link
   <<: *E2E-link
-  train: cora_link
   eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: cora_link
     - stage: valid
       split_name: valid
       dataset: cora_link_eval
@@ -42,8 +46,10 @@ cora_link: &cora_link
 
 pubmed_link: &pubmed_link
   <<: *E2E-link
-  train: pubmed_link
   eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: pubmed_link
     - stage: valid
       split_name: valid
       dataset: pubmed_link_eval
@@ -56,8 +62,10 @@ pubmed_link: &pubmed_link
 
 FB15K237: &FB15K237
   <<: *E2E-link
-  train: FB15K237
   eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: FB15K237
     - stage: valid
       split_name: valid
       dataset: FB15K237_eval
@@ -70,8 +78,10 @@ FB15K237: &FB15K237
 
 WN18RR: &WN18RR
   <<: *E2E-link
-  train: WN18RR
   eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: WN18RR
     - stage: valid
       split_name: valid
       dataset: WN18RR_eval
@@ -85,6 +95,8 @@ WN18RR: &WN18RR
 E2E-graph: &E2E-graph
   task_level: e2e_graph
   eval_set_constructs:
+    - stage: train
+      split_name: train
     - stage: valid
       split_name: valid
     - stage: test
@@ -94,13 +106,18 @@ E2E-graph: &E2E-graph
 
 chemblpre: &chemblpre
   <<: *E2E-graph
-  train: chemblpre
   eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: chemblpre
 
 chempcba: &chempcba
   <<: *E2E-graph
   train: chempcba
   eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: chempcba
     - stage: valid
       split_name: valid
       dataset: chempcba_eval
@@ -113,4 +130,4 @@ chempcba: &chempcba
 
 chemhiv: &chemhiv
   <<: *E2E-graph
-  train: chemhiv
+  dataset: chemhiv
