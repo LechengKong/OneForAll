@@ -55,6 +55,7 @@ class SubgraphDataset(GraphTextDataset):
             self,
             pyg_graph,
             class_emb,
+            prompt_edge_emb,
             data_idx,
             hop=2,
             class_mapping=None,
@@ -79,6 +80,7 @@ class SubgraphDataset(GraphTextDataset):
                 shape=(self.g.num_nodes, self.g.num_nodes),
             )
         self.class_emb = class_emb
+        self.prompt_edge_emb = prompt_edge_emb
         self.hop = hop
         self.data_idx = data_idx
         self.class_mapping = class_mapping
@@ -114,7 +116,7 @@ class SubgraphDataset(GraphTextDataset):
             binary_rep,
             target_node_id,
         ) = self.get_neighbors(index)
-        feat = self.g.x_text_feat[neighbors]
+        feat = self.g.node_text_feat[neighbors]
         e_type = torch.zeros(len(edge_index[0]), dtype=torch.long)
         edge_feat = self.g.edge_text_feat.repeat([len(edge_index[0]), 1])
         return (
@@ -160,7 +162,7 @@ class SubgraphDataset(GraphTextDataset):
         edge_feat = torch.cat(
             [
                 edge_feat,
-                self.g.prompt_edge_feat.repeat([len(virtual_edge[0]) * 2, 1]),
+                self.prompt_edge_emb.repeat([len(virtual_edge[0]) * 2, 1]),
             ]
         )
         new_subg = pyg.data.Data(
@@ -223,10 +225,11 @@ class SubgraphHierDataset(SubgraphDataset):
             self,
             pyg_graph,
             class_emb,
+            prompt_edge_emb,
+            noi_node_emb,
             data_idx,
             hop=2,
             class_mapping=None,
-            prompt_feat=None,
             to_undirected=False,
             process_label_func=None,
             adj=None,
@@ -235,6 +238,7 @@ class SubgraphHierDataset(SubgraphDataset):
         super().__init__(
             pyg_graph,
             class_emb,
+            prompt_edge_emb,
             data_idx,
             hop,
             class_mapping,
@@ -243,7 +247,7 @@ class SubgraphHierDataset(SubgraphDataset):
             adj,
             **kwargs,
         )
-        self.prompt_feat = prompt_feat
+        self.noi_node_emb = noi_node_emb
 
     def __len__(self):
         return len(self.data_idx)
@@ -259,7 +263,7 @@ class SubgraphHierDataset(SubgraphDataset):
             binary_rep,
         ) = feature_graph
         next_nid = len(feat)
-        feat = torch.cat([feat, self.prompt_feat, self.class_emb], dim=0)
+        feat = torch.cat([feat, self.noi_node_emb, self.class_emb], dim=0)
         virtual_edge = torch.tensor(
             [
                 target_node_id + [next_nid] * len(self.class_emb),
@@ -285,7 +289,7 @@ class SubgraphHierDataset(SubgraphDataset):
             [e_type] + virtual_edge_type
         )
         edge_feat = torch.cat(
-            [edge_feat, self.g.prompt_edge_feat.repeat([len(virtual_edge[0]) * n_virtual_edge, 1])]
+            [edge_feat, self.prompt_edge_emb.repeat([len(virtual_edge[0]) * n_virtual_edge, 1])]
         )
         # edge_index = torch.cat([edge_index, edge_index[[1, 0]]], dim=-1)
         new_subg = pyg.data.Data(
@@ -299,11 +303,12 @@ class SubgraphLinkHierDataset(SubgraphHierDataset):
             self,
             pyg_graph,
             class_emb,
+            prompt_edge_emb,
+            noi_node_emb,
             edges,
             remove_edge=False,
             hop=2,
             class_mapping=None,
-            prompt_feat=None,
             to_undirected=False,
             process_label_func=None,
             adj=None,
@@ -312,10 +317,11 @@ class SubgraphLinkHierDataset(SubgraphHierDataset):
         super().__init__(
             pyg_graph,
             class_emb,
+            prompt_edge_emb,
+            noi_node_emb,
             None,
             hop,
             class_mapping,
-            prompt_feat,
             to_undirected,
             process_label_func,
             adj,
@@ -393,11 +399,12 @@ class SubgraphKGHierDataset(SubgraphHierDataset):
             self,
             pyg_graph,
             class_emb,
+            prompt_edge_emb,
+            noi_node_emb,
             edges,
             remove_edge=False,
             hop=2,
             class_mapping=None,
-            prompt_feat=None,
             to_undirected=False,
             process_label_func=None,
             adj=None,
@@ -406,10 +413,11 @@ class SubgraphKGHierDataset(SubgraphHierDataset):
         super().__init__(
             pyg_graph,
             class_emb,
+            prompt_edge_emb,
+            noi_node_emb,
             None,
             hop,
             class_mapping,
-            prompt_feat,
             to_undirected,
             process_label_func,
             adj,
@@ -468,7 +476,7 @@ class SubgraphKGHierDataset(SubgraphHierDataset):
             edge_type,
         ) = self.get_neighbors(index)
         edge_index = torch.cat([edge_index, edge_index[[1, 0]]], dim=-1)
-        feat = self.g.x_text_feat[neighbors]
+        feat = self.g.node_text_feat[neighbors]
         e_type = torch.zeros(len(edge_index[0]), dtype=torch.long)
         edge_feat = self.g.edge_text_feat[
             torch.cat(
@@ -491,7 +499,7 @@ class GraphListDataset(GraphTextDataset):
             self,
             graphs,
             class_embs,
-            prompt_edge_feat,
+            prompt_edge_emb,
             data_idx,
             process_label_func=None,
             single_prompt_edge=False,
@@ -499,7 +507,7 @@ class GraphListDataset(GraphTextDataset):
     ):
         super().__init__(graphs, process_label_func, **kwargs)
         self.class_emb = class_embs
-        self.prompt_edge_feat = prompt_edge_feat
+        self.prompt_edge_emb = prompt_edge_emb
         self.data_idx = data_idx
         self.single_prompt_edge = single_prompt_edge
 
@@ -566,7 +574,7 @@ class GraphListDataset(GraphTextDataset):
         edge_emb = torch.cat(
             [
                 edge_feat,
-                self.prompt_edge_feat[0].repeat(
+                self.prompt_edge_emb.repeat(
                     [(next_nid) * len(g_class_emb), 1]
                 ),
             ]
@@ -643,8 +651,8 @@ class GraphListHierDataset(GraphListDataset):
             self,
             graphs,
             class_embs,
-            prompt_edge_feat,
-            prompt_text_feat,
+            prompt_edge_emb,
+            noi_node_emb,
             data_idx,
             process_label_func=None,
             single_prompt_edge=False,
@@ -653,13 +661,13 @@ class GraphListHierDataset(GraphListDataset):
         super().__init__(
             graphs,
             class_embs,
-            prompt_edge_feat,
+            prompt_edge_emb,
             data_idx,
             process_label_func,
             single_prompt_edge,
             **kwargs,
         )
-        self.prompt_text_feat = prompt_text_feat
+        self.noi_node_emb = noi_node_emb
 
     def make_prompted_graph(self, feature_graph):
         (
@@ -671,7 +679,7 @@ class GraphListHierDataset(GraphListDataset):
             label,
             trimmed_label,
         ) = feature_graph
-        feat = torch.cat([feat, self.prompt_text_feat[:1], g_class_emb], dim=0)
+        feat = torch.cat([feat, self.noi_node_emb, g_class_emb], dim=0)
         feature2prompt_edge = torch.tensor(
             [list(range(next_nid)), [next_nid] * next_nid],
             dtype=torch.long,
@@ -711,7 +719,7 @@ class GraphListHierDataset(GraphListDataset):
         edge_feat = torch.cat(
             [
                 edge_feat,
-                self.prompt_edge_feat[0].repeat(
+                self.prompt_edge_emb.repeat(
                     [
                         2 * len(feature2prompt_edge[0])
                         + len(prompt2prompt_edge[0]) * prompt_feat_multiple,

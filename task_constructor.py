@@ -154,24 +154,24 @@ def make_data(
 
 
 def ConstructNodeCls(
-        name, dataset, split, split_name, to_bin_cls_func, **kwargs
+        dataset, split, split_name, prompt_feats, to_bin_cls_func, global_data, **kwargs
 ):
     text_g = dataset.data
 
     return SubgraphHierDataset(
         text_g,
-        text_g.label_text_feat,
+        prompt_feats["class_node_text_feat"],
+        prompt_feats["prompt_edge_text_feat"],
+        prompt_feats["noi_node_text_feat"],
         split[split_name],
-        prompt_feat=text_g.prompt_text_feat,
         to_undirected=True,
         process_label_func=to_bin_cls_func,
-        walk_length=kwargs["walk_length"],
-        single_prompt_edge=kwargs["single_prompt_edge"],
+        **kwargs,
     )
 
 
 def ConstructNodeNopromptCls(
-        name, dataset, split, split_name, to_bin_cls_func, **kwargs
+        dataset, split, split_name, to_bin_cls_func, global_data, **kwargs
 ):
     text_g = dataset.data
 
@@ -185,27 +185,27 @@ def ConstructNodeNopromptCls(
 
 
 def ConstructLinkCls(
-        name, dataset, split, split_name, to_bin_cls_func, **kwargs
+        dataset, split, split_name, prompt_feats, to_bin_cls_func, global_data, **kwargs
 ):
     text_g = dataset.data
     edges = text_g.edge_index
-    train_graph = kwargs["global_data"]
+    train_graph = global_data
 
     return SubgraphLinkHierDataset(
         train_graph,
-        train_graph.edge_label_feat,
+        prompt_feats["class_node_text_feat"],
+        prompt_feats["prompt_edge_text_feat"],
+        prompt_feats["noi_node_text_feat"],
         edges.T[split[split_name]].numpy(),
-        prompt_feat=train_graph.prompt_text_edge_feat,
         to_undirected=True,
         hop=3,
-        remove_edge=kwargs["remove_edge"],
         process_label_func=to_bin_cls_func,
-        walk_length=kwargs["walk_length"],
+        **kwargs,
     )
 
 
 def ConstructLinkNopromptCls(
-        name, dataset, split, split_name, to_bin_cls_func, **kwargs
+        dataset, split, split_name, to_bin_cls_func, **kwargs
 ):
     text_g = dataset.data
     edges = text_g.edge_index
@@ -224,39 +224,39 @@ def ConstructLinkNopromptCls(
     )
 
 
-def ConstructKG(name, dataset, split, split_name, to_bin_cls_func, **kwargs):
+def ConstructKG(dataset, split, split_name, prompt_feats, to_bin_cls_func, global_data, **kwargs):
     text_g = dataset.data
 
     return SubgraphKGHierDataset(
         text_g,
-        text_g.edge_label_feat,
+        prompt_feats["class_node_text_feat"],
+        prompt_feats["prompt_edge_text_feat"],
+        prompt_feats["noi_node_text_feat"],
         split[split_name],
-        prompt_feat=text_g.prompt_text_feat,
         to_undirected=True,
         hop=2,
-        remove_edge=kwargs["remove_edge"],
         process_label_func=to_bin_cls_func,
-        walk_length=kwargs["walk_length"],
+        **kwargs,
     )
 
 
 def ConstructMolCls(
-        name, dataset, split, split_name, to_bin_cls_func, **kwargs
+        dataset, split, split_name, prompt_feats, to_bin_cls_func, global_data, **kwargs
 ):
     return GraphListHierDataset(
         dataset,
-        dataset.label_text_feat,
-        dataset.prompt_edge_feat,
-        dataset.prompt_text_feat,
+        prompt_feats["class_node_text_feat"],
+        prompt_feats["prompt_edge_text_feat"],
+        prompt_feats["noi_node_text_feat"],
         split[split_name],
         process_label_func=to_bin_cls_func,
         single_prompt_edge=True,
-        walk_length=kwargs["walk_length"],
+        **kwargs,
     )
 
 
 def ConstructMolNopromptCls(
-        name, dataset, split, split_name, to_bin_cls_func, **kwargs
+        dataset, split, split_name, to_bin_cls_func, **kwargs
 ):
     return GraphListNopromptDataset(
         dataset,
@@ -540,10 +540,12 @@ class UnifiedTaskConstructor:
         data = self.get_ofa_data(dataset_config)
         split = self.get_data_split(dataset_config)
         global_data = self.get_global_data(dataset_config)
+        prompt_feats = data.get_prompt_text_feat(dataset_config["task_level"])
         data = globals()[dataset_config["construct"]](
             dataset=data,
             split=split,
             split_name=stage_config["split"],
+            prompt_feats=prompt_feats,
             to_bin_cls_func=globals()[dataset_config["process_label_func"]] if dataset_config.get(
                 "process_label_func") else None,
             global_data=global_data,
