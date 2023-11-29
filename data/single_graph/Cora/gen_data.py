@@ -6,6 +6,22 @@ from data.ofa_data import OFAPygDataset
 from ogb.nodeproppred import PygNodePropPredDataset
 
 
+def get_logic_label(ordered_txt):
+    or_labeled_text = []
+    not_and_labeled_text = []
+    for i in range(len(ordered_txt)):
+        for j in range(len(ordered_txt)):
+            c1 = ordered_txt[i]
+            c2 = ordered_txt[j]
+            txt = "prompt node. literature category and description: not " + c1[0] + ". " + c1[1][0] + " and not " + c2[
+                0] + ". " + c2[1][0]
+            not_and_labeled_text.append(txt)
+            txt = "prompt node. literature category and description: either " + c1[0] + ". " + c1[1][0] + " or " + c2[
+                0] + ". " + c2[1][0]
+            or_labeled_text.append(txt)
+    return or_labeled_text + not_and_labeled_text
+
+
 def get_data(dset):
     cur_path = os.path.dirname(__file__)
     path = os.path.join(cur_path, "cora.pt")
@@ -37,6 +53,7 @@ def get_data(dset):
         "prompt node. two papers do not have co-citation",
         "prompt node. two papers have co-citation"
     ]
+    logic_label_text = get_logic_label(ordered_desc)
     edge_text = [
         "feature edge. connected papers are cited together by other papers."
     ]
@@ -54,7 +71,7 @@ def get_data(dset):
             clean_text,
             edge_text,
             noi_node_text + noi_node_edge_text,
-            label_text + edge_label_text,
+            label_text + edge_label_text + logic_label_text,
             prompt_edge_text,
         ],
         {"e2e_node": {"noi_node_text_feat": ["noi_node_text_feat", [0]],
@@ -66,6 +83,12 @@ def get_data(dset):
                       "prompt_edge_text_feat": ["prompt_edge_text_feat", [0]]},
          "lr_node": {"noi_node_text_feat": ["noi_node_text_feat", [0]],
                      "class_node_text_feat": ["class_node_text_feat", torch.arange(len(label_text))],
-                     "prompt_edge_text_feat": ["prompt_edge_text_feat", [0, 1, 2]]}
+                     "prompt_edge_text_feat": ["prompt_edge_text_feat", [0, 1, 2]]},
+         "logic_e2e": {"noi_node_text_feat": ["noi_node_text_feat", [0]],
+                       "class_node_text_feat": ["class_node_text_feat",
+                                                torch.arange(len(label_text) + len(edge_label_text),
+                                                             len(label_text) + len(edge_label_text) + len(
+                                                                 logic_label_text))],
+                       "prompt_edge_text_feat": ["prompt_edge_text_feat", [0]]},
          }
     )

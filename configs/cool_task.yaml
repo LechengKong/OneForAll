@@ -1,4 +1,5 @@
 E2E-node: &E2E-node
+  eval_pool_mode: mean
   eval_set_constructs:
     - stage: train
       split_name: train
@@ -25,7 +26,44 @@ wikics: &wikics
   <<: *E2E-node
   dataset: wikics
 
+logic_arxiv:
+  <<: *E2E-node
+  dataset: logic_arxiv
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: logic_arxiv
+    - stage: valid
+      split_name: valid
+      dataset: logic_cora
+    - stage: test
+      split_name: test
+      dataset: logic_cora
+    - stage: test
+      split_name: train
+      dataset: logic_cora
+
+logic_cora:
+  <<: *E2E-node
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: cora_node
+    - stage: valid
+      split_name: valid
+      dataset: cora_node
+    - stage: valid
+      split_name: valid
+      dataset: logic_cora
+    - stage: test
+      split_name: test
+      dataset: logic_cora
+    - stage: test
+      split_name: train
+      dataset: logic_cora
+
 E2E-link: &E2E-link
+  eval_pool_mode: mean
   task_level: e2e_link
 
 cora_link: &cora_link
@@ -37,6 +75,9 @@ cora_link: &cora_link
     - stage: valid
       split_name: valid
       dataset: cora_link_eval
+    - stage: valid
+      split_name: valid
+      dataset: cora_node
     - stage: test
       split_name: test
       dataset: cora_link_eval
@@ -94,6 +135,7 @@ WN18RR: &WN18RR
 
 E2E-graph: &E2E-graph
   task_level: e2e_graph
+  eval_pool_mode: mean
   eval_set_constructs:
     - stage: train
       split_name: train
@@ -110,6 +152,15 @@ chemblpre: &chemblpre
     - stage: train
       split_name: train
       dataset: chemblpre
+    - stage: valid
+      split_name: valid
+      dataset: chempcba_eval
+    - stage: valid
+      split_name: valid
+      dataset: chemhiv
+    - stage: test
+      split_name: test
+      dataset: chemhiv
 
 chempcba: &chempcba
   <<: *E2E-graph

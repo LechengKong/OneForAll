@@ -50,10 +50,10 @@ def get_data(dset):
             label_text + edge_label_text,
             prompt_edge_text,
         ],
-        {"e2e_node": {"noi_text_feat": ["noi_text_feat", [0]],
+        {"e2e_node": {"noi_node_text_feat": ["noi_node_text_feat", [0]],
                       "class_node_text_feat": ["class_node_text_feat", torch.arange(len(label_text))],
                       "prompt_edge_text_feat": ["prompt_edge_text_feat", [0]]},
-         "e2e_link": {"noi_text_feat": ["noi_text_feat", [1]],
+         "e2e_link": {"noi_node_text_feat": ["noi_node_text_feat", [1]],
                       "class_node_text_feat": ["class_node_text_feat",
                                                torch.arange(len(label_text), len(label_text) + len(edge_label_text))],
                       "prompt_edge_text_feat": ["prompt_edge_text_feat", [0]]}}

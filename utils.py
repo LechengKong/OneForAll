@@ -21,9 +21,10 @@ ENCODER_DIM_DICT = {"ST": 768,
                     "llama2_7b": 4096,
                     "llama2_13b": 5120}
 
+
 class SentenceEncoder:
     def __init__(
-        self, name, root="cache_data/model", batch_size=1, multi_gpu=False
+            self, name, root="cache_data/model", batch_size=1, multi_gpu=False
     ):
         self.name = name
         self.root = root
@@ -66,8 +67,8 @@ class SentenceEncoder:
 
         elif self.name == "e5":
             model_name = "intfloat/e5-large-v2"
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
-            model = AutoModel.from_pretrained(model_name)
+            tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=self.root)
+            model = AutoModel.from_pretrained(model_name, cache_dir=self.root)
             self.model = model.to(self.device)
             self.tokenizer = tokenizer
             self.encode = self.e5_encode
@@ -105,7 +106,7 @@ class SentenceEncoder:
             )
         return embeddings
 
-    def llama_encode(self, texts, to_tensor):
+    def llama_encode(self, texts, to_tensor=True):
 
         # Add EOS token for padding
         self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -136,7 +137,7 @@ class SentenceEncoder:
 
         return all_embeddings
 
-    def e5_encode(self, texts, to_tensor):
+    def e5_encode(self, texts, to_tensor=True):
         def average_pool(last_hidden_states,
                          attention_mask):
             last_hidden = last_hidden_states.masked_fill(~attention_mask[..., None].bool(), 0.0)
@@ -190,6 +191,10 @@ def binary_single_auc_func(func, output, batch):
     # print(score)
     # print(label)
     return func.update(score, label.view(-1, batch.num_classes[0]))
+
+
+def flat_auc(func, output, batch):
+    return func(torch.sigmoid(output).view(-1), batch.bin_labels[batch.true_nodes_mask].view(-1))
 
 
 def binary_apr_func(func, output, batch):
@@ -309,6 +314,7 @@ def scipy_rwpe(data, walk_length):
 
     return pe
 
+
 def get_available_devices():
     r"""Get IDs of all available GPUs.
 
@@ -325,6 +331,7 @@ def get_available_devices():
         device = torch.device('cpu')
 
     return device, gpu_ids
+
 
 def get_label_texts(labels):
     label_texts = [None] * int(len(labels) * 2)

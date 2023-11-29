@@ -1,6 +1,8 @@
 import torch
 import torch_geometric as pyg
 import json
+import numpy as np
+import copy
 
 from data.KG.gen_data import KGOFADataset
 from data.chemmol.gen_data import MolOFADataset
@@ -40,6 +42,7 @@ from utils import (
     binary_auc_multi_func,
     binary_single_auc_func,
     classification_single_func,
+    flat_auc,
 )
 
 # import os
@@ -47,8 +50,8 @@ from utils import (
 
 name2dataset = {
     "arxiv": SingleGraphOFADataset,
-    "cora": SingleGraphOFADataset,
-    "pubmed": SingleGraphOFADataset,
+    "Cora": SingleGraphOFADataset,
+    "Pubmed": SingleGraphOFADataset,
     "WN18RR": KGOFADataset,
     "FB15K237": KGOFADataset,
     "wikics": SingleGraphOFADataset,
@@ -81,8 +84,6 @@ def CiteSplitter(dataset):
 
 def CiteLinkSplitter(dataset):
     text_g = dataset.data
-    text_g.x = text_g.x_text_feat
-    text_g.prompt_edge_feat = dataset.prompt_edge_feat
     edges = text_g.edge_index
     edge_perm = torch.randperm(len(edges[0]))
     train_offset = int(len(edge_perm) * 0.85)
@@ -149,7 +150,7 @@ def make_data(
         metric=metric,
         state_name=split_name + "_" + name,
         classes=num_classes,
-        meta_data={"eval_func": eval_func},
+        meta_data={"eval_func": eval_func, "eval_mode": kwargs["eval_mode"]},
     )
 
 
@@ -465,6 +466,29 @@ def hiv_zs_class(embs, label):
     return label, embs[0:1], label
 
 
+def gen_can(n_class, label, size):
+    can = torch.randint(n_class, size)
+    mask = torch.rand(size) > 0.75
+    can[mask] = label.view(-1)
+    return can
+
+
+def process_logic_label(embs, label):
+    num_class = int(np.sqrt(len(embs) / 2))
+    can = gen_can(num_class, label, (4, 2))
+    or_label = ((can == label.view(-1)).sum(-1) > 0).to(torch.int)
+    or_feat = embs[can[:, 0] * num_class + can[:, 1]]
+
+    can = gen_can(num_class, label, (4, 2))
+    and_label = ((can == label.view(-1)).sum(-1) == 0).to(torch.int)
+    and_feat = embs[can[:, 0] * num_class + can[:, 1] + num_class ** 2]
+    new_class_emb = torch.cat([or_feat, and_feat], dim=0)
+    new_binary_rep = torch.cat([or_label, and_label]).view(1, -1)
+    if isinstance(label, int):
+        label = torch.tensor(label)
+    return label.view(1, -1).to(torch.long), new_class_emb, new_binary_rep
+
+
 none_process_label = None
 
 
@@ -488,15 +512,20 @@ class UnifiedTaskConstructor:
         self.edges = {}
         self.datasets = {"train": [], "valid": [],
                          "test": []}  # train a list of Dataset, valid/test a list of DataWithMeta
-        self.train_set = []
-        self.valid_dm_set = []
-        self.test_dm_set = []
+        self.stage_names = {"train": [], "valid": [], "test": []}
 
+    def construct_exp(self):
+        val_task_index_lst = []
+        val_pool_mode = []
         for task in self.tasks:
-            self.construct_task(task)
+            config = self.task_config_lookup[task]
+            config = copy.deepcopy(config)
+            val_task_index_lst.append(self.construct_task(config))
+            val_pool_mode.append(config["eval_pool_mode"])
+        return val_task_index_lst, val_pool_mode
 
-    def construct_task(self, task):
-        config = self.task_config_lookup[task]
+    def construct_task(self, config):
+        val_task_index = []
         for stage_config in config["eval_set_constructs"]:
             if "dataset" not in stage_config:
                 stage_config["dataset"] = config["dataset"]
@@ -506,13 +535,20 @@ class UnifiedTaskConstructor:
 
             dataset_config = self.data_config_lookup[dataset_name]
 
-            self.add_dataset(stage_config, dataset_config)
+            stage_ind = self.add_dataset(stage_config, dataset_config)
+
+            if stage_config["stage"] == "valid":
+                val_task_index.append(stage_ind)
+        return val_task_index
 
     def get_split_key(self, dataset_config):
-        return dataset_config["dataset"] + "_" + dataset_config["task_level"]
+        return dataset_config["dataset_name"] + "_" + dataset_config["task_level"]
+
+    def get_stage_name(self, stage_config, dataset_config):
+        return "_".join([self.get_split_key(dataset_config), stage_config["stage"], stage_config["split_name"]])
 
     def get_ofa_data(self, dataset_config):
-        dataset_name = dataset_config["dataset"]
+        dataset_name = dataset_config["dataset_name"]
         if dataset_name not in self.dataset:
             self.dataset[dataset_name] = name2dataset[dataset_name](
                 dataset_name, root=self.root, encoder=self.encoder
@@ -523,7 +559,8 @@ class UnifiedTaskConstructor:
         split_key = self.get_split_key(dataset_config)
         if split_key not in self.dataset_split:
             dataset_splitter = dataset_config.get("dataset_splitter")
-            split = globals()[dataset_splitter](self.dataset[dataset_config["dataset"]]) if dataset_splitter else None
+            split = globals()[dataset_splitter](
+                self.dataset[dataset_config["dataset_name"]]) if dataset_splitter else None
             self.dataset_split[split_key] = split
         return self.dataset_split[split_key]
 
@@ -531,7 +568,7 @@ class UnifiedTaskConstructor:
         split_key = self.get_split_key(dataset_config)
         if split_key not in self.preprocess_storage:
             preprocessor = dataset_config.get("preprocess")
-            global_data = globals()[preprocessor](self.dataset[dataset_config["dataset"]],
+            global_data = globals()[preprocessor](self.dataset[dataset_config["dataset_name"]],
                                                   self.dataset_split[split_key]) if preprocessor else None
             self.preprocess_storage[split_key] = global_data
         return self.preprocess_storage[split_key]
@@ -539,12 +576,15 @@ class UnifiedTaskConstructor:
     def add_dataset(self, stage_config, dataset_config):
         data = self.get_ofa_data(dataset_config)
         split = self.get_data_split(dataset_config)
+        stage_name = self.get_stage_name(stage_config, dataset_config)
+        if stage_config["stage"] != "train" and stage_name in self.stage_names[stage_config["stage"]]:
+            return self.stage_names[stage_config["stage"]].index(stage_name)
         global_data = self.get_global_data(dataset_config)
         prompt_feats = data.get_prompt_text_feat(dataset_config["task_level"])
         data = globals()[dataset_config["construct"]](
             dataset=data,
             split=split,
-            split_name=stage_config["split"],
+            split_name=stage_config["split_name"],
             prompt_feats=prompt_feats,
             to_bin_cls_func=globals()[dataset_config["process_label_func"]] if dataset_config.get(
                 "process_label_func") else None,
@@ -557,18 +597,22 @@ class UnifiedTaskConstructor:
             eval_data = make_data(
                 stage_config["dataset"],
                 data,
-                stage_config["split"],
+                stage_config["split_name"],
                 dataset_config["eval_metric"],
                 globals()[dataset_config["eval_func"]],
                 dataset_config["num_classes"],
                 batch_size=self.batch_size,
                 sample_size=self.sample_size,
+                eval_mode=dataset_config["eval_mode"]
             )
             self.datasets[stage_config["stage"]].append(eval_data)
+        self.stage_names[stage_config["stage"]].append(stage_name)
+        return self.stage_names[stage_config["stage"]].index(stage_name)
 
-    def make_train_data(self, multiple, min_ratio):
+    def make_train_data(self, multiple, min_ratio, data_val_index=None):
         train_data = MultiDataset(
             self.datasets["train"],
+            data_val_index=data_val_index,
             dataset_multiple=multiple,
             patience=3,
             window_size=5,
@@ -585,8 +629,8 @@ class UnifiedTaskConstructor:
                 self.batch_size,
                 sample_size=self.sample_size,
             ),
-            "val": self.valid_dm_set,
-            "test": self.test_dm_set,
+            "val": self.datasets["valid"],
+            "test": self.datasets["test"],
         }
         return text_dataset
 

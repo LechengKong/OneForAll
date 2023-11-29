@@ -79,7 +79,8 @@ class OFAPygDataset(InMemoryDataset):
         pass
 
     def process(self):
-        self.encoder.get_model()
+        if self.encoder.model is None:
+            self.encoder.get_model()
         data_list, texts, side_data = self.gen_data()
 
         texts_emb = self.text2feature(texts)
@@ -98,7 +99,7 @@ class OFAPygDataset(InMemoryDataset):
 
     def get_prompt_text_feat(self, task_name):
         task_map = self.get_task_map()
-        if task_name not in self.side_data:
+        if task_name not in task_map:
             raise NotImplementedError(
                 "Task " + task_name + " is not implemented for " + self.name
                 + " dataset the implemented tasks are " + str(task_map.keys()))
@@ -154,7 +155,8 @@ class OFAPygSTDataset(OFAPygDataset):
         pass
 
     def process(self):
-        self.encoder.get_model()
+        if self.encoder.model is None:
+            self.encoder.get_model()
         data_list, texts, side_data = self.gen_data()
         texts_emb = self.text2feature(texts)
         torch.save(texts, self.processed_paths[0])

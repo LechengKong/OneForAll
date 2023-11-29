@@ -65,7 +65,7 @@ def get_taxonomy(path):
     return arxiv_cs_taxonomy
 
 
-def get_label_feature(path):
+def get_pd_feature(path):
     arxiv_cs_taxonomy = get_taxonomy(path)
     mapping_file = os.path.join(path, "labelidx2arxivcategeory.csv.gz")
     arxiv_categ_vals = pd.merge(
@@ -74,7 +74,11 @@ def get_label_feature(path):
         left_on="arxiv category",
         right_on="id",
     )
+    return arxiv_categ_vals
 
+
+def get_label_feature(path):
+    arxiv_categ_vals = get_pd_feature(path)
     text = (
             "prompt node. literature category and description: "
             + arxiv_categ_vals["name"]
@@ -86,6 +90,23 @@ def get_label_feature(path):
     return label_text_lst
 
 
+def get_logic_feature(path):
+    arxiv_categ_vals = get_pd_feature(path)
+    or_labeled_text = []
+    not_and_labeled_text = []
+    for i in range(len(arxiv_categ_vals)):
+        for j in range(len(arxiv_categ_vals)):
+            c1 = arxiv_categ_vals.iloc[i]
+            c2 = arxiv_categ_vals.iloc[j]
+            txt = "prompt node. literature category and description: not " + c1["name"] + ". " + c1[
+                "description"] + " and not " + c2["name"] + ". " + c2["description"]
+            not_and_labeled_text.append(txt)
+            txt = "prompt node. literature category and description: either " + c1["name"] + ". " + c1[
+                "description"] + " or " + c2["name"] + ". " + c2["description"]
+            or_labeled_text.append(txt)
+    return or_labeled_text + not_and_labeled_text
+
+
 def get_data(dset):
     pyg_data = PygNodePropPredDataset(
         name="ogbn-arxiv", root=dset.data_dir
@@ -93,6 +114,7 @@ def get_data(dset):
     cur_path = os.path.dirname(__file__)
     feat_node_texts = get_node_feature(cur_path).tolist()
     class_node_texts = get_label_feature(cur_path).tolist()
+    logic_node_texts = get_logic_feature(cur_path)
     feat_edge_texts = ["feature edge. citation"]
     noi_node_texts = [
         "prompt node. node classification of literature category"
@@ -107,16 +129,22 @@ def get_data(dset):
                                                              torch.arange(len(class_node_texts))],
                                     "prompt_edge_text_feat": ["prompt_edge_text_feat", [0]]},
                        "lr_e2e": {"noi_node_text_feat": ["noi_node_text_feat", [0]],
-                                   "class_node_text_feat": ["class_node_text_feat",
-                                                            torch.arange(len(class_node_texts))],
-                                   "prompt_edge_text_feat": ["prompt_edge_text_feat", [0, 1, 2]]}}
+                                  "class_node_text_feat": ["class_node_text_feat",
+                                                           torch.arange(len(class_node_texts))],
+                                  "prompt_edge_text_feat": ["prompt_edge_text_feat", [0, 1, 2]]},
+                       "logic_e2e": {"noi_node_text_feat": ["noi_node_text_feat", [0]],
+                                     "class_node_text_feat": ["class_node_text_feat",
+                                                              torch.arange(len(class_node_texts),
+                                                                           len(class_node_texts) + len(
+                                                                               logic_node_texts))],
+                                     "prompt_edge_text_feat": ["prompt_edge_text_feat", [0]]}}
     return (
         [pyg_data.data],
         [
             feat_node_texts,
             feat_edge_texts,
             noi_node_texts,
-            class_node_texts,
+            class_node_texts + logic_node_texts,
             prompt_edge_texts,
         ],
         prompt_text_map,

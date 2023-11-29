@@ -31,11 +31,13 @@ from utils import (
 
 from task_constructor import UnifiedTaskConstructor
 
+
 def main(params):
-    encoder = SentenceEncoder(params.llm_name)
+    encoder = SentenceEncoder(params.llm_name, batch_size=params.llm_b_size)
     task_config_lookup = load_yaml(
-        os.path.join(os.path.dirname(__file__), "configs", "task_config.yaml")
+        os.path.join(os.path.dirname(__file__), "configs", "cool_task.yaml")
     )
+    data_config_lookup = load_yaml(os.path.join(os.path.dirname(__file__), "configs", "data_config.yaml"))
 
     if isinstance(params.task_names, str):
         task_names = [a.strip() for a in params.task_names.split(",")]
@@ -50,12 +52,14 @@ def main(params):
         task_names,
         encoder,
         task_config_lookup,
+        data_config_lookup,
         root=root,
         batch_size=params.batch_size,
+        sample_size=params.train_sample_size,
     )
+    val_task_index_lst, val_pool_mode = tasks.construct_exp()
     # remove llm model
     encoder.flush_model()
-
 
     in_dim = ENCODER_DIM_DICT[params.llm_name]
     out_dim = 768 + (params.rwpe if params.rwpe is not None else 0)
@@ -77,7 +81,7 @@ def main(params):
     else:
         min_ratio = [1]
 
-    train_data = tasks.make_train_data(data_multiple, min_ratio)
+    train_data = tasks.make_train_data(data_multiple, min_ratio, data_val_index=val_task_index_lst)
 
     text_dataset = tasks.make_full_dm_list(
         data_multiple, min_ratio, train_data

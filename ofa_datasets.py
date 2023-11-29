@@ -106,12 +106,13 @@ class SubgraphDataset(GraphTextDataset):
             ]
         )
         label, emb, binary_rep = self.process_label(label)
-        return edge_index, neighbors, label, binary_rep, [0]
+        return edge_index, neighbors, emb, label, binary_rep, [0]
 
     def make_feature_graph(self, index):
         (
             edge_index,
             neighbors,
+            emb,
             label,
             binary_rep,
             target_node_id,
@@ -125,6 +126,7 @@ class SubgraphDataset(GraphTextDataset):
             edge_index,
             e_type,
             target_node_id,
+            emb,
             label,
             binary_rep,
         )
@@ -136,15 +138,16 @@ class SubgraphDataset(GraphTextDataset):
             edge_index,
             e_type,
             target_node_id,
+            class_emb,
             label,
             binary_rep,
         ) = feature_graph
         next_nid = len(feat)
-        feat = torch.cat([feat, self.class_emb], dim=0)
+        feat = torch.cat([feat, class_emb], dim=0)
         virtual_edge = torch.tensor(
             [
-                target_node_id * len(self.class_emb),
-                [i + next_nid for i in range(len(self.class_emb))],
+                target_node_id * len(class_emb),
+                [i + next_nid for i in range(len(class_emb))],
             ],
             dtype=torch.long,
         )
@@ -171,32 +174,29 @@ class SubgraphDataset(GraphTextDataset):
         return new_subg
 
     def to_pyg(self, feature_graph, prompted_graph):
+        num_class = len(feature_graph[-3])
         prompt_nodes_mask = torch.zeros(
             prompted_graph.num_nodes, dtype=torch.bool
         )
         bin_labels = torch.zeros(prompted_graph.num_nodes, dtype=torch.float)
-        prompt_nodes_mask[
-        prompted_graph.num_nodes - len(self.class_emb):
-        ] = True
+        prompt_nodes_mask[prompted_graph.num_nodes - num_class:] = True
         noi_node_mask = torch.zeros(prompted_graph.num_nodes, dtype=torch.bool)
         noi_node_mask[
-            prompted_graph.num_nodes - len(self.class_emb) - 1
-        ] = True
+            prompted_graph.num_nodes - num_class - 1
+            ] = True
         prompted_graph.noi_node_mask = noi_node_mask
         prompted_graph.true_nodes_mask = prompt_nodes_mask
-        bin_labels[
-        prompted_graph.num_nodes - len(self.class_emb):
-        ] = feature_graph[-1]
+        bin_labels[prompted_graph.num_nodes - num_class:] = feature_graph[-1]
         prompted_graph.bin_labels = bin_labels
         target_node_mask = torch.zeros(
             prompted_graph.num_nodes, dtype=torch.bool
         )
-        target_node_mask[feature_graph[-3]] = True
+        target_node_mask[feature_graph[-4]] = True
         feat_node_mask = torch.zeros(prompted_graph.num_nodes, dtype=torch.bool)
         feat_node_mask[:len(feature_graph[0])] = True
         prompted_graph.target_node_mask = target_node_mask
         prompted_graph.sample_num_nodes = prompted_graph.num_nodes
-        prompted_graph.num_classes = len(self.class_emb)
+        prompted_graph.num_classes = num_class
         prompted_graph.feat_node_mask = feat_node_mask
         # print("text", new_subg)
         return prompted_graph
@@ -259,16 +259,17 @@ class SubgraphHierDataset(SubgraphDataset):
             edge_index,
             e_type,
             target_node_id,
+            class_emb,
             label,
             binary_rep,
         ) = feature_graph
         next_nid = len(feat)
-        feat = torch.cat([feat, self.noi_node_emb, self.class_emb], dim=0)
+        feat = torch.cat([feat, self.noi_node_emb, class_emb], dim=0)
         virtual_edge = torch.tensor(
             [
-                target_node_id + [next_nid] * len(self.class_emb),
+                target_node_id + [next_nid] * len(class_emb),
                 [next_nid] * len(target_node_id)
-                + [i + next_nid + 1 for i in range(len(self.class_emb))],
+                + [i + next_nid + 1 for i in range(len(class_emb))],
             ],
             dtype=torch.long,
         )
@@ -373,7 +374,7 @@ class SubgraphLinkHierDataset(SubgraphHierDataset):
             ]
         )
         label, embs, binary_rep = self.process_label(label)
-        return edge_index, neighbors, label, binary_rep, [0, 1]
+        return edge_index, neighbors, embs, label, binary_rep, [0, 1]
 
 
 class SubgraphNopromptLinkDataset(SubgraphLinkHierDataset):
@@ -464,12 +465,13 @@ class SubgraphKGHierDataset(SubgraphHierDataset):
         edge_type = self.g.edge_types[edge_mask]
         edge_index = edge2idx[edge_index]
         label, embs, binary_rep = self.process_label(label)
-        return edge_index, neighbors, label, binary_rep, [0, 1], edge_type
+        return edge_index, neighbors, embs, label, binary_rep, [0, 1], edge_type
 
     def make_feature_graph(self, index):
         (
             edge_index,
             neighbors,
+            embs,
             label,
             binary_rep,
             target_node_id,
@@ -489,6 +491,7 @@ class SubgraphKGHierDataset(SubgraphHierDataset):
             edge_index,
             e_type,
             target_node_id,
+            embs,
             label,
             binary_rep,
         )
@@ -519,9 +522,9 @@ class GraphListDataset(GraphTextDataset):
         edge_index = g.edge_index
         label = g.y
         # label_emb = self.class_emb(label).view(1, -1)
-        feat = g.x_text_feat
+        feat = g.node_text_feat
         next_nid = g.num_nodes
-        edge_feat = g.xe_text_feat
+        edge_feat = g.edge_text_feat
         y_label, g_class_emb, trimmed_label = self.process_label(label)
         return (
             feat,
@@ -2380,16 +2383,20 @@ class MultiDataset(DatasetWithCollate):
     def __init__(
             self,
             datas,
+            data_val_index=None,
             dataset_multiple=1,
             window_size=3,
             patience=3,
             min_ratio=0.1,
-            mode="max",
+            mode=None,
     ):
         self.datas = datas
         self.sizes = np.array([len(d) for d in datas])
         self.performance_record = []
         self.patience = patience
+        self.data_val_index = data_val_index
+        if self.data_val_index is None:
+            self.data_val_index = [[i] for i in range(len(self.datas))]
         if isinstance(self.patience, int):
             self.patience = np.zeros(len(self.sizes)) + self.patience
         self.inpatience = np.zeros(len(self.patience))
@@ -2399,15 +2406,14 @@ class MultiDataset(DatasetWithCollate):
         self.dataset_multiple = dataset_multiple
         if not isinstance(self.dataset_multiple, list):
             self.dataset_multiple = (
-                    np.zeros(len(self.sizes)) + self.dataset_multiple
+                    np.zeros(len(self.sizes), dtype=float) + self.dataset_multiple
             )
         self.min_ratio = min_ratio
         if isinstance(self.min_ratio, float):
-            self.min_ratio = np.zeros(len(self.sizes)) + self.min_ratio
+            self.min_ratio = np.zeros(len(self.sizes), dtype=float) + self.min_ratio
         self.mode = mode
-        if isinstance(self.mode, str):
-            self.mode = [self.mode] * len(self.sizes)
-        self.mode = [1 if m == "max" else 0 for m in self.mode]
+        if mode is not None:
+            self.mode = np.array([1 if m == "max" else -1 for m in self.mode])
         # self.walk_length = walk_length
         self.compute_sizes()
 
@@ -2439,17 +2445,22 @@ class MultiDataset(DatasetWithCollate):
         return self.datas[0].get_collate_fn()
 
     def update(self, metric):
+        metric = np.array(metric)
+        p_records = np.array(self.performance_record)
         for i in range(len(self.datas)):
-            if len(self.performance_record) < self.window_size[i]:
+            if len(p_records) < self.window_size[i] or len(self.data_val_index[i]) == 0:
                 continue
-            vals = [entry[i] for entry in self.performance_record][
-                   -int(self.window_size[i]):
-                   ]
-            vals = np.array(vals)
+
+            vals = p_records[-int(self.window_size[i]):, self.data_val_index[i]]
+            if self.mode is None:
+                mode = np.ones(len(vals[0]), dtype=float)
+            else:
+                mode = self.mode[self.data_val_index[i]]
             mean = vals.mean()
-            if self.mode[0] * (metric[i] > mean) + (1 - self.mode[0]) * (
-                    not metric[i] > mean
-            ):
+
+            metric_vals = metric[self.data_val_index[i]]
+            mean_improvement = (((metric_vals - mean) / mean) * mode).sum()
+            if mean_improvement > 0:
                 self.inpatience[i] = 0
             else:
                 self.inpatience[i] += 1

@@ -10,7 +10,7 @@ class SingleGraphOFADataset(OFAPygDataset):
         if self.name not in AVAILABLE_DATA:
             raise NotImplementedError("Data " + self.name + " is not implemented")
         data_module = importlib.import_module("data.single_graph." + self.name + ".gen_data")
-        return data_module.get_data()
+        return data_module.get_data(self)
 
     def add_text_emb(self, data_list, text_emb):
         data_list[0].node_text_feat = text_emb[0]

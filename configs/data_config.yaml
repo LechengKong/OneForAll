@@ -4,9 +4,10 @@ E2E-node: &E2E-node
   construct: ConstructNodeCls
   args:
     walk_length: null
-    single_prompt_edge: False
+    single_prompt_edge: True
   eval_metric: acc
   eval_func: classification_func
+  eval_mode: max
 
 arxiv: &arxiv
   <<: *E2E-node
@@ -15,16 +16,30 @@ arxiv: &arxiv
   process_label_func: process_pth_label
   num_classes: 40
 
+logic_arxiv: &logic_arxiv
+  <<: *arxiv
+  task_level: logic_e2e
+  process_label_func: process_logic_label
+  eval_metric: auc
+  eval_func: flat_auc
+
 cora_node: &cora_node
   <<: *E2E-node
-  dataset_name: cora
+  dataset_name: Cora
   dataset_splitter: CiteSplitter
   process_label_func: process_int_label
   num_classes: 7
 
+logic_cora: &logic_cora
+  <<: *cora_node
+  task_level: logic_e2e
+  process_label_func: process_logic_label
+  eval_metric: auc
+  eval_func: flat_auc
+
 pubmed_node: &pubmed_node
   <<: *E2E-node
-  dataset_name: pubmed
+  dataset_name: Pubmed
   dataset_splitter: CiteSplitter
   process_label_func: process_int_label
   num_classes: 3
@@ -55,10 +70,11 @@ E2E-link-cite: &E2E-link-cite
   eval_metric: auc
   eval_func: binary_auc_func
   num_classes: 2
+  eval_mode: max
 
 cora_link: &cora_link
   <<: *E2E-link-cite
-  dataset_name: cora
+  dataset_name: Cora
 
 cora_link_eval:
   <<: *cora_link
@@ -67,7 +83,7 @@ cora_link_eval:
 
 pubmed_link: &pubmed_link
   <<: *E2E-link-cite
-  dataset_name: pubmed
+  dataset_name: Pubmed
 
 pubmed_link_eval:
   <<: *pubmed_link
@@ -82,6 +98,7 @@ E2E-link-KG: &E2E-link-KG
   process_label_func: process_int_label
   eval_metric: acc
   eval_func: classification_func
+  eval_mode: max
 
 WN18RR: &WN18RR
   <<: *E2E-link-KG
@@ -110,6 +127,7 @@ E2E-graph: &E2E-graph
   construct: ConstructMolCls
   args:
     walk_length: null
+  eval_mode: max
 
 chemblpre: &chemblpre
   <<: *E2E-graph
