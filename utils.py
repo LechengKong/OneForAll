@@ -1,31 +1,18 @@
 import os
 import torch
 from sentence_transformers import SentenceTransformer
-from transformers import (
-    LlamaForCausalLM,
-    LlamaTokenizer,
-    AutoTokenizer,
-    AutoModel
-)
+from transformers import (LlamaForCausalLM, LlamaTokenizer, AutoTokenizer, AutoModel)
 from torchmetrics import AveragePrecision, AUROC
 import numpy as np
-from torch_geometric.utils import (
-    to_scipy_sparse_matrix,
-    scatter,
-)
+from torch_geometric.utils import (to_scipy_sparse_matrix, scatter, )
 from tqdm.autonotebook import trange
 import gc
 
-ENCODER_DIM_DICT = {"ST": 768,
-                    "e5": 1024,
-                    "llama2_7b": 4096,
-                    "llama2_13b": 5120}
+ENCODER_DIM_DICT = {"ST": 768, "e5": 1024, "llama2_7b": 4096, "llama2_13b": 5120}
 
 
 class SentenceEncoder:
-    def __init__(
-            self, name, root="cache_data/model", batch_size=1, multi_gpu=False
-    ):
+    def __init__(self, name, root="cache_data/model", batch_size=1, multi_gpu=False):
         self.name = name
         self.root = root
         self.device, _ = get_available_devices()
@@ -36,11 +23,7 @@ class SentenceEncoder:
 
     def get_model(self):
         if self.name == "ST":
-            self.model = SentenceTransformer(
-                "multi-qa-distilbert-cos-v1",
-                device=self.device,
-                cache_folder=self.root,
-            )
+            self.model = SentenceTransformer("multi-qa-distilbert-cos-v1", device=self.device, cache_folder=self.root, )
             self.encode = self.ST_encode
 
         elif self.name == "llama2_7b":
@@ -74,11 +57,8 @@ class SentenceEncoder:
             self.encode = self.e5_encode
 
         elif self.name == "roberta":
-            self.model = SentenceTransformer(
-                "sentence-transformers/roberta-base-nli-stsb-mean-tokens",
-                device=self.device,
-                cache_folder=self.root,
-            )
+            self.model = SentenceTransformer("sentence-transformers/roberta-base-nli-stsb-mean-tokens",
+                device=self.device, cache_folder=self.root, )
             self.encode = self.ST_encode
         else:
             raise ValueError(f"Unknown language model: {self.name}.")
@@ -90,20 +70,11 @@ class SentenceEncoder:
         if self.multi_gpu:
             # Start the multi-process pool on all available CUDA devices
             pool = self.model.start_multi_process_pool()
-            embeddings = self.model.encode_multi_process(
-                texts,
-                pool=pool,
-                batch_size=self.batch_size,
-            )
+            embeddings = self.model.encode_multi_process(texts, pool=pool, batch_size=self.batch_size, )
             embeddings = torch.from_numpy(embeddings)
         else:
-            embeddings = self.model.encode(
-                texts,
-                batch_size=self.batch_size,
-                show_progress_bar=True,
-                convert_to_tensor=to_tensor,
-                convert_to_numpy=not to_tensor,
-            )
+            embeddings = self.model.encode(texts, batch_size=self.batch_size, show_progress_bar=True,
+                convert_to_tensor=to_tensor, convert_to_numpy=not to_tensor, )
         return embeddings
 
     def llama_encode(self, texts, to_tensor=True):
@@ -112,18 +83,9 @@ class SentenceEncoder:
         self.tokenizer.pad_token = self.tokenizer.eos_token
         all_embeddings = []
         with torch.no_grad():
-            for start_index in trange(
-                    0,
-                    len(texts),
-                    self.batch_size,
-                    desc="Batches",
-                    disable=False,
-            ):
+            for start_index in trange(0, len(texts), self.batch_size, desc="Batches", disable=False, ):
                 sentences_batch = texts[start_index: start_index + self.batch_size]
-                input_ids = self.tokenizer(sentences_batch,
-                                           return_tensors="pt",
-                                           padding="longest",
-                                           truncation=True,
+                input_ids = self.tokenizer(sentences_batch, return_tensors="pt", padding="longest", truncation=True,
                                            max_length=500).input_ids.to(self.device)
                 transformer_output = self.model(input_ids, return_dict=True, output_hidden_states=True)["hidden_states"]
                 # No gradients on word_embeddings
@@ -138,25 +100,15 @@ class SentenceEncoder:
         return all_embeddings
 
     def e5_encode(self, texts, to_tensor=True):
-        def average_pool(last_hidden_states,
-                         attention_mask):
+        def average_pool(last_hidden_states, attention_mask):
             last_hidden = last_hidden_states.masked_fill(~attention_mask[..., None].bool(), 0.0)
             return last_hidden.sum(dim=1) / attention_mask.sum(dim=1)[..., None]
 
         all_embeddings = []
         with torch.no_grad():
-            for start_index in trange(
-                    0,
-                    len(texts),
-                    self.batch_size,
-                    desc="Batches",
-                    disable=False,
-            ):
+            for start_index in trange(0, len(texts), self.batch_size, desc="Batches", disable=False, ):
                 sentences_batch = texts[start_index: start_index + self.batch_size]
-                batch_dict = self.tokenizer(sentences_batch,
-                                            padding="longest",
-                                            truncation=True,
-                                            return_tensors='pt')
+                batch_dict = self.tokenizer(sentences_batch, padding="longest", truncation=True, return_tensors='pt')
                 for item, value in batch_dict.items():
                     batch_dict[item] = value.to(self.device)
                 outputs = self.model(**batch_dict)
@@ -231,9 +183,7 @@ def classification_single_func(func, output, batch):
 class MultiApr(torch.nn.Module):
     def __init__(self, num_labels=1):
         super().__init__()
-        self.metrics = torch.nn.ModuleList(
-            [AveragePrecision(task="binary") for i in range(num_labels)]
-        )
+        self.metrics = torch.nn.ModuleList([AveragePrecision(task="binary") for i in range(num_labels)])
 
     def update(self, preds, targets):
         for i, met in enumerate(self.metrics):
@@ -263,9 +213,7 @@ class MultiApr(torch.nn.Module):
 class MultiAuc(torch.nn.Module):
     def __init__(self, num_labels=1):
         super().__init__()
-        self.metrics = torch.nn.ModuleList(
-            [AUROC(task="binary") for i in range(num_labels)]
-        )
+        self.metrics = torch.nn.ModuleList([AUROC(task="binary") for i in range(num_labels)])
 
     def update(self, preds, targets):
         for i, met in enumerate(self.metrics):
@@ -301,9 +249,7 @@ def scipy_rwpe(data, walk_length):
         value = torch.ones(data.num_edges, device=row.device)
     value = scatter(value, row, dim_size=N, reduce="sum").clamp(min=1)[row]
     value = 1.0 / value
-    adj = to_scipy_sparse_matrix(
-        data.edge_index, edge_attr=value, num_nodes=data.num_nodes
-    )
+    adj = to_scipy_sparse_matrix(data.edge_index, edge_attr=value, num_nodes=data.num_nodes)
 
     out = adj
     pe_list = [out.diagonal()]
@@ -337,13 +283,16 @@ def get_label_texts(labels):
     label_texts = [None] * int(len(labels) * 2)
     for entry in labels:
         label_texts[labels[entry][0]] = (
-                "prompt node. molecule property description. "
-                + "The molecule is effective to the following assay. "
-                + labels[entry][1][0][:-41]
-        )
+                "prompt node. molecule property description. " + "The molecule is effective to the following assay. " +
+                labels[entry][1][0][:-41])
         label_texts[labels[entry][0] + len(labels)] = (
-                "prompt node. molecule property description. "
-                + "The molecule is not effective to the following assay. "
-                + labels[entry][1][0][:-41]
-        )
+                "prompt node. molecule property description. " + "The molecule is not effective to the following "
+                                                                 "assay. " +
+                labels[entry][1][0][:-41])
     return label_texts
+
+
+def set_mask(data, name, index, dtype=torch.bool):
+    mask = torch.zeros(data.num_nodes, dtype=dtype)
+    mask[index] = True
+    setattr(data, name, mask)
