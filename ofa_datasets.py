@@ -20,7 +20,7 @@ class GraphTextDataset(DatasetWithCollate):
         if "prompt_edge_list" in kwargs:
             self.prompt_edge_list = kwargs["prompt_edge_list"]
         else:
-            self.prompt_edge_list = {"f2n": [1, None], "n2f": [3, None]}
+            self.prompt_edge_list = {"f2n": [1, 0], "n2f": [3, 0], "n2c": [2, 0], "c2n": [4, 0]},
         if "no_class_node" in kwargs and kwargs["no_class_node"]:
             self.no_class_node = True
         else:
@@ -54,7 +54,7 @@ class GraphTextDataset(DatasetWithCollate):
             if self.prompt_edge_list[prompt_edge_str][1] is None:
                 edge_emb = self.prompt_edge_emb
             else:
-                edge_emb = self.prompt_edge_list[prompt_edge_str][1]
+                edge_emb = self.prompt_edge_emb[self.prompt_edge_list[prompt_edge_str][1]]
             prompt_edge_feat = edge_emb.repeat([len(prompt_e_index[0]), 1])
             prompt_edge_lst.append(prompt_e_index)
             prompt_edge_type_lst.append(prompt_edge_types)
@@ -406,7 +406,10 @@ class FewShotDataset(DatasetWithCollate):
         # return node ids for an n_way k_shot q_query meta task
         # node_ids: (n_way, k_shot + q_query)
         # node_cls: (1, n_way), representing true classes corresponding to n ways
-        node_ids, node_cls, class_ind = next(iter(self.fs_idx_loader))
+        node_ids, class_ind = self.fs_idx_loader.get_few_shot_idx()
+        n_way = len(class_ind)
+        k_shot = len(node_ids[0]) - 1
+        q_query = 1
         class_emb = self.query_graph_dataset.class_emb[class_ind]
 
         # spt_subgraphs will store all n_way x k_shot subgraph info
@@ -415,14 +418,14 @@ class FewShotDataset(DatasetWithCollate):
         for cls_idx in range(len(node_ids)):
             for shot_idx in range(len(node_ids[0])):
                 # sm.record()
-                if shot_idx < self.q_query:
+                if shot_idx < q_query:
                     qry_graphs.append(
                         self.get_noi_graph(self.query_graph_dataset, node_ids[cls_idx, shot_idx], class_emb))
                 else:
                     spt_graphs.append(
                         self.get_noi_graph(self.support_graph_dataset, node_ids[cls_idx, shot_idx], class_emb))
 
-        qry_ind = torch.randint(len(node_ids), (1, 1))
+        qry_ind = torch.randint(n_way, (1, 1))
         qry_graph = qry_graphs[qry_ind.view(-1)]
         graphs = [qry_graph] + spt_graphs
         feat_lst, edge_index, label, edge_feat, e_type = zip(*graphs)
@@ -434,10 +437,10 @@ class FewShotDataset(DatasetWithCollate):
         meta_feat = torch.cat(feat_lst, dim=0)
         meta_n_nodes = len(meta_feat)
         meta_feat = torch.cat([meta_feat, class_emb], dim=0)
-        class_node_indices = torch.arange(meta_n_nodes, meta_n_nodes + len(class_emb))
-        spt_class_node_indices = class_node_indices.repeat_interleave(int(len(spt_graphs) / len(node_cls)))
+        class_node_indices = torch.arange(meta_n_nodes, meta_n_nodes + n_way)
+        spt_class_node_indices = class_node_indices.repeat_interleave(k_shot)
         meta_edge = torch.cat(edge_index, dim=-1) + offset.repeat_interleave(n_edge)
-        qry_meta_edge = torch.stack([noi_node_idx[0].repeat(len(class_emb)), class_node_indices], dim=0)
+        qry_meta_edge = torch.stack([noi_node_idx[0].repeat(n_way), class_node_indices], dim=0)
         spt_meta_edge = torch.stack([noi_node_idx[1:], spt_class_node_indices], dim=0)
         meta_edge = torch.cat([meta_edge, qry_meta_edge, spt_meta_edge], dim=-1)
 
@@ -448,18 +451,20 @@ class FewShotDataset(DatasetWithCollate):
 
         new_subg = pyg.data.Data(meta_feat, meta_edge, y=qry_ind, edge_attr=meta_edge_feat, edge_type=meta_e_type)
 
-        num_class = len(class_emb)
         bin_labels = torch.zeros(new_subg.num_nodes, dtype=torch.float)
-        bin_labels[new_subg.num_nodes - num_class + qry_ind.view(-1):] = 1
+        bin_labels[new_subg.num_nodes - n_way + qry_ind.view(-1):] = 1
         new_subg.bin_labels = bin_labels
-        set_mask(new_subg, "true_nodes_mask", list(range(new_subg.num_nodes - num_class, new_subg.num_nodes)))
+        set_mask(new_subg, "true_nodes_mask", list(range(new_subg.num_nodes - n_way, new_subg.num_nodes)))
         set_mask(new_subg, "noi_node_mask", noi_node_idx)
         set_mask(new_subg, "target_node_mask", offset)
         set_mask(new_subg, "feat_node_mask", offset)
         new_subg.sample_num_nodes = new_subg.num_nodes
-        new_subg.num_classes = num_class
+        new_subg.num_classes = n_way
         # print("text", new_subg)
         return new_subg
+
+    def get_collate_fn(self):
+        return pyg.loader.dataloader.Collater(None, None)
 
 
 class MultiDataset(DatasetWithCollate):

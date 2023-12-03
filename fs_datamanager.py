@@ -7,6 +7,23 @@ import torch
 import numpy as np
 
 
+class SimpleFSManager:
+    def __init__(self, class_ind, data_ind, k_shot, q_query, n_way):
+        self.class_ind = class_ind
+        self.data_ind = data_ind
+        self.k_shot = k_shot
+        self.q_query = q_query
+        self.n_way = n_way
+
+    def get_few_shot_idx(self):
+        target_classes_ind = np.random.permutation(len(self.class_ind))[:self.n_way]
+        target_classes = self.class_ind[target_classes_ind]
+        samples = []
+        for idx in target_classes_ind:
+            samples.append(np.random.choice(self.data_ind[idx], self.k_shot + self.q_query))
+        return np.array(samples), target_classes
+
+
 class DataManager:
     @abstractmethod
     def get_data_loader(self, mode):
@@ -25,14 +42,14 @@ class FewShotDataManager(DataManager):
     """
 
     def __init__(
-        self,
-        data,
-        n_way,
-        k_shot,
-        q_query,
-        class_split_ratio=None,
-        class_split_lst=None,
-        num_workers=0,
+            self,
+            data,
+            n_way,
+            k_shot,
+            q_query,
+            class_split_ratio=None,
+            class_split_lst=None,
+            num_workers=0,
     ):
         super(FewShotDataManager, self).__init__()
         data.y = data.y.squeeze()
@@ -65,7 +82,7 @@ class FewShotDataManager(DataManager):
 
 class FewShotDataset(Dataset):
     def __init__(
-        self, data, batch_size, class_split_ratio, num_workers, class_split_lst
+            self, data, batch_size, class_split_ratio, num_workers, class_split_lst
     ):
         self.data = data
         self.batch_size = batch_size
@@ -88,7 +105,7 @@ class FewShotDataset(Dataset):
             cls_split_lst = self.class_split_lst + [
                 [[cls for sublist in self.class_split_lst for cls in sublist]]
             ]
-            assert len(cls_split_lst)==4
+            assert len(cls_split_lst) == 4
 
         elif self.class_split_ratio is not None:
             # create list according to class_split_ratio and save

@@ -10,8 +10,8 @@ from data.single_graph.gen_data import SingleGraphOFADataset
 
 from ofa_datasets import (GraphListDataset, SubgraphDataset, MultiDataset, GraphListHierDataset, SubgraphHierDataset,
                           SubgraphLinkHierDataset, SubgraphKGHierDataset, SubgraphNopromptDataset,
-                          GraphListNopromptDataset, SubgraphNopromptLinkDataset, )
-from fs_datamanager import FewShotDataManager
+                          GraphListNopromptDataset, SubgraphNopromptLinkDataset, FewShotDataset)
+from fs_datamanager import FewShotDataManager, SimpleFSManager
 
 from gp.utils.utils import k_fold_ind, k_fold2_split
 from gp.lightning.data_template import DataWithMeta
@@ -37,6 +37,23 @@ def ArxivSplitter(dataset):
     split["valid"] = text_split[1]
     split["test"] = text_split[2]
     return split
+
+
+def ArxivFSSplitter(dataset):
+    labels = dataset.data.y
+    with open("data/low_resource_split.json", "r") as f:
+        lr_class_split = json.load(f)
+    arxiv_cls_split = lr_class_split["arxiv"]
+    fs_split = []
+    for split in arxiv_cls_split:
+        cls_idx = []
+        data_idx = []
+        for cls in split:
+            cls_idx.append(cls)
+            cls_data_idx = (labels == cls).nonzero(as_tuple=True)[0]
+            data_idx.append(cls_data_idx)
+        fs_split.append([cls_idx, data_idx])
+    return {"train": fs_split[0], "valid": fs_split[1], "test": fs_split[2]}
 
 
 def CiteSplitter(dataset):
@@ -102,9 +119,7 @@ def ConstructNodeCls(dataset, split, split_name, prompt_feats, to_bin_cls_func, 
 
     return SubgraphHierDataset(text_g, prompt_feats["class_node_text_feat"], prompt_feats["prompt_edge_text_feat"],
                                prompt_feats["noi_node_text_feat"], split[split_name], to_undirected=True,
-                               process_label_func=to_bin_cls_func,
-                               prompt_edge_list={"f2n": [1, None], "n2f": [3, None], "n2c": [2, None],
-                                                 "c2n": [4, None]}, **kwargs, )
+                               process_label_func=to_bin_cls_func, **kwargs, )
 
 
 def ConstructNodeNopromptCls(dataset, split, split_name, to_bin_cls_func, global_data, **kwargs):
@@ -122,9 +137,7 @@ def ConstructLinkCls(dataset, split, split_name, prompt_feats, to_bin_cls_func, 
     return SubgraphLinkHierDataset(train_graph, prompt_feats["class_node_text_feat"],
                                    prompt_feats["prompt_edge_text_feat"], prompt_feats["noi_node_text_feat"],
                                    edges.T[split[split_name]].numpy(), to_undirected=True, hop=3,
-                                   process_label_func=to_bin_cls_func,
-                                   prompt_edge_list={"f2n": [1, None], "n2f": [3, None], "n2c": [2, None],
-                                                     "c2n": [4, None]}, **kwargs, )
+                                   process_label_func=to_bin_cls_func, **kwargs, )
 
 
 def ConstructLinkNopromptCls(dataset, split, split_name, to_bin_cls_func, **kwargs):
@@ -143,17 +156,13 @@ def ConstructKG(dataset, split, split_name, prompt_feats, to_bin_cls_func, globa
 
     return SubgraphKGHierDataset(text_g, prompt_feats["class_node_text_feat"], prompt_feats["prompt_edge_text_feat"],
                                  prompt_feats["noi_node_text_feat"], split[split_name], to_undirected=True, hop=2,
-                                 process_label_func=to_bin_cls_func,
-                                 prompt_edge_list={"f2n": [1, None], "n2f": [3, None], "n2c": [2, None],
-                                                   "c2n": [4, None]}, **kwargs, )
+                                 process_label_func=to_bin_cls_func, **kwargs, )
 
 
 def ConstructMolCls(dataset, split, split_name, prompt_feats, to_bin_cls_func, global_data, **kwargs):
     return GraphListHierDataset(dataset, prompt_feats["class_node_text_feat"], prompt_feats["prompt_edge_text_feat"],
                                 prompt_feats["noi_node_text_feat"], split[split_name],
-                                process_label_func=to_bin_cls_func,
-                                prompt_edge_list={"f2n": [1, None], "n2f": [3, None], "n2c": [2, None],
-                                                  "c2n": [4, None]}, **kwargs, )
+                                process_label_func=to_bin_cls_func, **kwargs, )
 
 
 def ConstructMolNopromptCls(dataset, split, split_name, to_bin_cls_func, **kwargs):
@@ -162,51 +171,36 @@ def ConstructMolNopromptCls(dataset, split, split_name, to_bin_cls_func, **kwarg
                                     walk_length=kwargs["walk_length"], )
 
 
-#
-# def ConstructNCFSZS(
-#         dataset, data_manager, n, k, split_name, config, state_name=None, eval_metric=None, eval_func=None,
-#         train_flag=False, adj=None, total_task_num=50, undirected_flag=True, **kwargs
-# ):
-#     if config["class_emb_flag"]:
-#         class_emb = dataset.label_text_feat
-#     else:
-#         class_emb = dataset.prompt_text_feat.repeat(
-#             len(dataset.label_text_feat), 1
-#         )
-#     random_flag = config["random_flag"] if split_name == "train" else None
-#     split_name = config["mode"][split_name]
-#     data_class = FewShotNCDataset if kwargs["k_shot"] > 0 else ZeroShotNCDataset
-#     ofa_data = data_class(
-#         pyg_graph=dataset,
-#         class_emb=class_emb,
-#         data_idx=torch.zeros(total_task_num),
-#         n_way=kwargs["n_way"],
-#         k_shot=kwargs["k_shot"],
-#         q_query=kwargs["q_query"],
-#         datamanager=data_manager,
-#         mode=split_name,
-#         hop=2,
-#         prompt_feat=dataset.prompt_text_feat,
-#         to_undirected=undirected_flag,
-#         adj=adj,
-#         single_prompt_edge=True,
-#         random_flag=random_flag,
-#         min_n=n,
-#         min_k=k,
-#     )
-#
-#     if train_flag:
-#         return ofa_data
-#     else:
-#         return DataWithMeta(
-#             ofa_data,
-#             batch_size=kwargs["fs_task_num"],
-#             sample_size=-1,
-#             metric=eval_metric,
-#             state_name=state_name,
-#             classes=n,
-#             meta_data={"eval_func": eval_func}
-#         )
+def ConstructNCFSZS(
+        dataset, split, split_name, prompt_feats, to_bin_cls_func, global_data, **kwargs
+):
+    original_idx = torch.cat(split[split_name][1])
+    pseudo_split = {"pseudo": original_idx}
+    query_idx = []
+    count = 0
+    for d in split[split_name][1]:
+        query_idx.append(torch.arange(count, count + len(d), dtype=torch.long))
+        count += len(d)
+
+    query_p_edge_list = {"f2n": [1, 0], "n2f": [3, 0]}
+
+    query_graph_dataset = globals()[kwargs["base_construct"]](dataset=dataset, split=pseudo_split, split_name="pseudo",
+                                                              prompt_feats=prompt_feats, to_bin_cls_func=None,
+                                                              global_data=global_data,
+                                                              prompt_edge_list=query_p_edge_list, **kwargs)
+    support_p_edge_list = {"f2n": [1, 0], "n2f": [3, 0]}
+
+    support_graph_dataset = globals()[kwargs["base_construct"]](dataset=dataset, split=pseudo_split,
+                                                                split_name="pseudo",
+                                                                prompt_feats=prompt_feats, to_bin_cls_func=None,
+                                                                global_data=global_data,
+                                                                prompt_edge_list=support_p_edge_list, **kwargs)
+
+    fs_loader = SimpleFSManager(split[split_name[0]], query_idx, kwargs["k_shot"], 1, kwargs["n_way"])
+    return FewShotDataset(fs_loader, query_graph_dataset, support_graph_dataset,
+                          prompt_feats["prompt_edge_text_feat"][1:])
+
+
 #
 #
 # def ConstructLPFSZS(
