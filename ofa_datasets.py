@@ -48,17 +48,17 @@ class GraphTextDataset(DatasetWithCollate):
         prompt_edge_type_lst = []
         prompt_edge_feat_lst = []
         for prompt_edge_str in self.prompt_edge_list:
-            e_index = getattr(self, "make_" + prompt_edge_str + "_edge")(target_node_id, class_emb,
-                                                                         n_feat_node)
-            edge_types = torch.zeros(len(e_index[0]), dtype=torch.long) + self.prompt_edge_list[prompt_edge_str][0]
+            prompt_e_index = getattr(self, "make_" + prompt_edge_str + "_edge")(target_node_id, class_emb, n_feat_node)
+            prompt_edge_types = torch.zeros(len(prompt_e_index[0]), dtype=torch.long) + \
+                                self.prompt_edge_list[prompt_edge_str][0]
             if self.prompt_edge_list[prompt_edge_str][1] is None:
                 edge_emb = self.prompt_edge_emb
             else:
                 edge_emb = self.prompt_edge_list[prompt_edge_str][1]
-            edge_feat = edge_emb.repeat([len(e_index[0]), 1])
-            prompt_edge_lst.append(e_index)
-            prompt_edge_type_lst.append(edge_types)
-            prompt_edge_feat_lst.append(edge_feat)
+            prompt_edge_feat = edge_emb.repeat([len(prompt_e_index[0]), 1])
+            prompt_edge_lst.append(prompt_e_index)
+            prompt_edge_type_lst.append(prompt_edge_types)
+            prompt_edge_feat_lst.append(prompt_edge_feat)
         edge_index = torch.cat([edge_index] + prompt_edge_lst, dim=-1, )
         e_type = torch.cat([e_type] + prompt_edge_type_lst)
         edge_feat = torch.cat([edge_feat] + prompt_edge_feat_lst)
@@ -71,8 +71,7 @@ class GraphTextDataset(DatasetWithCollate):
         bin_labels = torch.zeros(new_subg.num_nodes, dtype=torch.float)
         bin_labels[new_subg.num_nodes - num_class:] = feature_graph[-1]
         new_subg.bin_labels = bin_labels
-        set_mask(new_subg, "true_nodes_mask",
-                 list(range(new_subg.num_nodes - num_class, new_subg.num_nodes)))
+        set_mask(new_subg, "true_nodes_mask", list(range(new_subg.num_nodes - num_class, new_subg.num_nodes)))
         set_mask(new_subg, "noi_node_mask", new_subg.num_nodes - num_class - 1)
         set_mask(new_subg, "target_node_mask", feature_graph[-4])
         set_mask(new_subg, "feat_node_mask", list(range(len(feature_graph[0]))))
@@ -302,13 +301,11 @@ class SubgraphKGHierDataset(SubgraphHierDataset):
 
 
 class GraphListDataset(GraphTextDataset):
-    def __init__(self, graphs, class_embs, prompt_edge_emb, data_idx, process_label_func=None, single_prompt_edge=False,
-                 **kwargs, ):
+    def __init__(self, graphs, class_embs, prompt_edge_emb, data_idx, process_label_func=None, **kwargs, ):
         super().__init__(graphs, process_label_func, **kwargs)
         self.class_emb = class_embs
         self.prompt_edge_emb = prompt_edge_emb
         self.data_idx = data_idx
-        self.single_prompt_edge = single_prompt_edge
 
     def __len__(self):
         return len(self.data_idx)
@@ -356,9 +353,8 @@ class GraphListNopromptDataset(GraphListDataset):
 
 class GraphListHierDataset(GraphListDataset):
     def __init__(self, graphs, class_embs, prompt_edge_emb, noi_node_emb, data_idx, process_label_func=None,
-                 single_prompt_edge=False, **kwargs, ):
-        super().__init__(graphs, class_embs, prompt_edge_emb, data_idx, process_label_func, single_prompt_edge,
-                         **kwargs, )
+                 **kwargs, ):
+        super().__init__(graphs, class_embs, prompt_edge_emb, data_idx, process_label_func, **kwargs, )
         self.noi_node_emb = noi_node_emb
 
     def make_prompt_node(self, feat, class_emb):
@@ -370,31 +366,23 @@ class GraphListHierDataset(GraphListDataset):
 
     def make_f2n_edge(self, target_node_id, class_emb, n_feat_node):
         prompt_edge = torch.tensor([list(range(n_feat_node)), [n_feat_node] * n_feat_node], dtype=torch.long, )
-        edge_types = torch.zeros(len(prompt_edge[0]), dtype=torch.long) + 1
-        edge_feat = self.prompt_edge_emb.repeat([len(prompt_edge[0]), 1])
-        return prompt_edge, edge_types, edge_feat
+        return prompt_edge
 
     def make_n2f_edge(self, target_node_id, class_emb, n_feat_node):
         prompt_edge = torch.tensor([[n_feat_node] * n_feat_node, list(range(n_feat_node))], dtype=torch.long, )
-        edge_types = torch.zeros(len(prompt_edge[0]), dtype=torch.long) + 3
-        edge_feat = self.prompt_edge_emb.repeat([len(prompt_edge[0]), 1])
-        return prompt_edge, edge_types, edge_feat
+        return prompt_edge
 
     def make_n2c_edge(self, target_node_id, class_emb, n_feat_node):
         prompt_edge = torch.tensor(
             [[n_feat_node] * len(class_emb), [n_feat_node + i + 1 for i in range(len(class_emb))], ],
             dtype=torch.long, )
-        edge_types = torch.zeros(len(prompt_edge[0]), dtype=torch.long) + 2
-        edge_feat = self.prompt_edge_emb.repeat([len(prompt_edge[0]), 1])
-        return prompt_edge, edge_types, edge_feat
+        return prompt_edge
 
     def make_c2n_edge(self, target_node_id, class_emb, n_feat_node):
         prompt_edge = torch.tensor(
             [[n_feat_node + i + 1 for i in range(len(class_emb))], [n_feat_node] * len(class_emb), ],
             dtype=torch.long, )
-        edge_types = torch.zeros(len(prompt_edge[0]), dtype=torch.long) + 4
-        edge_feat = self.prompt_edge_emb.repeat([len(prompt_edge[0]), 1])
-        return prompt_edge, edge_types, edge_feat
+        return prompt_edge
 
 
 class FewShotDataset(DatasetWithCollate):
@@ -434,7 +422,7 @@ class FewShotDataset(DatasetWithCollate):
                     spt_graphs.append(
                         self.get_noi_graph(self.support_graph_dataset, node_ids[cls_idx, shot_idx], class_emb))
 
-        qry_ind = torch.randint(len(node_ids), (1,1))
+        qry_ind = torch.randint(len(node_ids), (1, 1))
         qry_graph = qry_graphs[qry_ind.view(-1)]
         graphs = [qry_graph] + spt_graphs
         feat_lst, edge_index, label, edge_feat, e_type = zip(*graphs)
@@ -464,8 +452,7 @@ class FewShotDataset(DatasetWithCollate):
         bin_labels = torch.zeros(new_subg.num_nodes, dtype=torch.float)
         bin_labels[new_subg.num_nodes - num_class + qry_ind.view(-1):] = 1
         new_subg.bin_labels = bin_labels
-        set_mask(new_subg, "true_nodes_mask",
-                 list(range(new_subg.num_nodes - num_class, new_subg.num_nodes)))
+        set_mask(new_subg, "true_nodes_mask", list(range(new_subg.num_nodes - num_class, new_subg.num_nodes)))
         set_mask(new_subg, "noi_node_mask", noi_node_idx)
         set_mask(new_subg, "target_node_mask", offset)
         set_mask(new_subg, "feat_node_mask", offset)

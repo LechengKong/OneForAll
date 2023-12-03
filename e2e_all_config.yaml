@@ -1,6 +1,7 @@
 batch_size: 512
 eval_batch_size: 256
 dropout: 0.15
+lr: 0.001
 num_layers: 7
 JK : "none"
 task_names:
