@@ -16,15 +16,11 @@ NAME_TO_SPLIT = {"chemblpre": "chembl_pretraining", "chempcba": "pcba", "chemhiv
 
 def load_prompt_json(name):
     if name == "chemblpre":
-        with open(
-                os.path.join(os.path.dirname(__file__), "prompt_pretrain.json"), "rb"
-        ) as f:
+        with open(os.path.join(os.path.dirname(__file__), "prompt_pretrain.json"), "rb") as f:
             prompt_text = json.load(f)
         return prompt_text["chembl"]
     else:
-        with open(
-                os.path.join(os.path.dirname(__file__), "mol_label_desc.json"), "rb"
-        ) as f:
+        with open(os.path.join(os.path.dirname(__file__), "mol_label_desc.json"), "rb") as f:
             prompt_text = json.load(f)
         if name in NAME_TO_SPLIT:
             return prompt_text[NAME_TO_SPLIT[name]]
@@ -34,19 +30,9 @@ def load_prompt_json(name):
 
 def get_local_text(name):
     print("gen text")
-    cache_dir = os.path.join(
-        os.path.dirname(__file__), "../../cache_data/dataset"
-    )
-    data = load_dataset(
-        "haitengzhao/molecule_property_instruction",
-        cache_dir=cache_dir,
-        split=NAME_TO_SPLIT[name],
-    )
-    data_dict = {
-        "label": data["label"],
-        "task_index": data["task_index"],
-        "molecule_index": data["molecule_index"],
-    }
+    cache_dir = os.path.join(os.path.dirname(__file__), "../../cache_data/dataset")
+    data = load_dataset("haitengzhao/molecule_property_instruction", cache_dir=cache_dir, split=NAME_TO_SPLIT[name], )
+    data_dict = {"label": data["label"], "task_index": data["task_index"], "molecule_index": data["molecule_index"], }
     pd_data = pd.DataFrame.from_dict(data_dict)
     cls_data = pd_data[np.logical_not(pd.isna(pd_data["task_index"]))]
     cls_data["ori_index"] = np.arange(len(cls_data))
@@ -94,25 +80,16 @@ def gen_graph(graphs, labels_features):
     for i, g in enumerate(graphs):
         cur_nt_id = [node_texts2id[v] for v in g["node_feat"]]
         cur_et_id = [edge_texts2id[v] for v in g["edge_feat"]]
-        data.append(
-            pyg.data.data.Data(
-                x=torch.tensor(cur_nt_id, dtype=torch.long),
-                xe=torch.tensor(cur_et_id, dtype=torch.long),
-                edge_index=torch.tensor(g["edge_list"], dtype=torch.long).T,
-                y=torch.tensor(g["label"]),
-            )
-        )
+        data.append(pyg.data.data.Data(x=torch.tensor(cur_nt_id, dtype=torch.long),
+            xe=torch.tensor(cur_et_id, dtype=torch.long), edge_index=torch.tensor(g["edge_list"], dtype=torch.long).T,
+            y=torch.tensor(g["label"]), ))
         split[g["split"]].append(i)
 
-    prompt_edge_text = [
-        "prompt edge.",
-        "prompt edge. edge for query graph that is our target",
-        "prompt edge. edge for support graph that is an example",
-    ]
-    prompt_text = [
-        "prompt node. graph classification on molecule property",
-        "prompt node. few shot task node for graph classification that decides whether the query molecule belongs to the class of support molecules.",
-    ]
+    prompt_edge_text = ["prompt edge.", "prompt edge. edge for query graph that is our target",
+        "prompt edge. edge for support graph that is an example", ]
+    prompt_text = ["prompt node. graph classification on molecule property",
+        "prompt node. few shot task node for graph classification that decides whether the query molecule belongs to "
+        "the class of support molecules.", ]
 
     prompt_text_map = {"e2e_graph": {"noi_node_text_feat": ["noi_node_text_feat", [0]],
                                      "class_node_text_feat": ["class_node_text_feat",
@@ -123,17 +100,8 @@ def gen_graph(graphs, labels_features):
                                                              torch.arange(len(labels_features))],
                                     "prompt_edge_text_feat": ["prompt_edge_text_feat", [0, 1, 2]]}}
 
-    ret = (
-        data,
-        [
-            u_node_texts_lst,
-            u_edge_texts_lst,
-            labels_features,
-            prompt_edge_text,
-            prompt_text,
-        ],
-        [split, prompt_text_map],
-    )
+    ret = (data, [u_node_texts_lst, u_edge_texts_lst, labels_features, prompt_edge_text, prompt_text, ],
+           [split, prompt_text_map],)
     return ret
 
 
@@ -165,6 +133,12 @@ class MolOFADataset(OFAPygDataset):
 
     def get_task_map(self):
         return self.side_data[1]
+
+    def get_edge_list(self, mode="e2e"):
+        if mode == "e2e_graph":
+            return {"f2n": [1, 0], "n2f": [3, 0], "n2c": [2, 0]}
+        elif mode == "lr_graph":
+            return {"f2n": [1, 0], "n2f": [3, 0]}
 
 
 if __name__ == "__main__":

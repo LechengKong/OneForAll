@@ -386,19 +386,23 @@ class GraphListHierDataset(GraphListDataset):
 
 
 class FewShotDataset(DatasetWithCollate):
-    def __init__(self, fsmanager, query_graph_dataset, support_graph_dataset, fs_edge_feats):
+    def __init__(self, fsmanager, query_graph_dataset, support_graph_dataset, fs_edge_feats, sample_size=1000):
         super().__init__()
         # mode 0 for sample index from training classes, 1 for val, 2 for test
         self.fs_idx_loader = fsmanager
         self.query_graph_dataset = query_graph_dataset
         self.support_graph_dataset = support_graph_dataset
         self.fs_edge_feats = fs_edge_feats
+        self.sample_size = sample_size
 
     def get_noi_graph(self, dataset: GraphTextDataset, index, class_emb):
         feature_graph = list(dataset.make_feature_graph(index))
         feature_graph[-3] = class_emb
         prompted_graph = dataset.make_prompted_graph(feature_graph)
         return prompted_graph
+
+    def __len__(self):
+        return self.sample_size
 
     def __getitem__(self, index):
         # sm = SmartTimer()
@@ -444,10 +448,10 @@ class FewShotDataset(DatasetWithCollate):
         spt_meta_edge = torch.stack([noi_node_idx[1:], spt_class_node_indices], dim=0)
         meta_edge = torch.cat([meta_edge, qry_meta_edge, spt_meta_edge], dim=-1)
 
-        meta_edge_feat = torch.cat(edge_feat + [self.fs_edge_feats[0].repeat(len(qry_meta_edge[0]), 1),
-                                                self.fs_edge_feats[1].repeat(len(spt_meta_edge[0]), 1)], dim=0)
-        meta_e_type = torch.cat(
-            e_type + [torch.zeros(len(qry_meta_edge[0]) + len(spt_meta_edge[0]), dtype=torch.long) + 2])
+        meta_edge_feat = torch.cat(list(edge_feat) + [self.fs_edge_feats[0].repeat(len(qry_meta_edge[0]), 1),
+                                                      self.fs_edge_feats[1].repeat(len(spt_meta_edge[0]), 1)], dim=0)
+        meta_e_type = torch.cat(list(e_type) + [torch.zeros(len(qry_meta_edge[0]), dtype=torch.long) + 2,
+                                                torch.zeros(len(spt_meta_edge[0]), dtype=torch.long) + 4])
 
         new_subg = pyg.data.Data(meta_feat, meta_edge, y=qry_ind, edge_attr=meta_edge_feat, edge_type=meta_e_type)
 

@@ -22,3 +22,11 @@ class SingleGraphOFADataset(OFAPygDataset):
 
     def get_task_map(self):
         return self.side_data
+
+    def get_edge_list(self, mode="e2e"):
+        if mode == "e2e_node":
+            return {"f2n": [1, 0], "n2f": [3, 0], "n2c": [2, 0], "c2n": [4, 0]}
+        elif mode == "lr_node":
+            return {"f2n": [1, 0]}
+        elif mode == "e2e_link":
+            return {"f2n": [1, 0], "n2f": [3, 0], "n2c": [2, 0], "c2n": [4, 0]}

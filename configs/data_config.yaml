@@ -93,7 +93,7 @@ pubmed_link_eval:
 E2E-link-KG: &E2E-link-KG
   <<: *E2E-link
   dataset_splitter: KGSplitter
-  preprocess: null
+  preprocess: KGConstructEdgeList
   construct: ConstructKG
   process_label_func: process_int_label
   eval_metric: acc
@@ -155,4 +155,83 @@ chemhiv: &chemhiv
   process_label_func: process_reverse_binary_label
   eval_metric: auc
   eval_func: binary_auc_func
+  num_classes: 2
+
+LR-node: &LR-node
+  task_level: lr_node
+  construct: ConstructFSTask
+  args:
+    walk_length: null
+    single_prompt_edge: True
+  eval_metric: acc
+  eval_func: classification_func
+  eval_mode: max
+
+arxiv_fs: &arxiv_fs
+  <<: *LR-node
+  dataset_name: arxiv
+  dataset_splitter: ArxivFSSplitter
+  process_label_func: process_pth_label
+  args:
+    walk_length: null
+    single_prompt_edge: True
+    n_way: 5
+    k_shot: 1
+    base_construct: ConstructNodeCls
+    no_class_node: True
+  num_classes: 5
+
+cora_fs: &cora_fs
+  <<: *LR-node
+  dataset_name: Cora
+  dataset_splitter: CiteFSSplitter
+  process_label_func: process_int_label
+  args:
+    walk_length: null
+    single_prompt_edge: True
+    n_way: 2
+    k_shot: 1
+    base_construct: ConstructNodeCls
+    no_class_node: True
+  num_classes: 2
+
+LR-link: &LR-link
+  task_level: lr_link
+  construct: ConstructFSTask
+  preprocess: KGConstructEdgeList
+  args:
+    walk_length: null
+    single_prompt_edge: True
+  eval_metric: acc
+  eval_func: classification_func
+  eval_mode: max
+
+FB15K237_fs: &FB15K237_fs
+  <<: *LR-link
+  dataset_name: FB15K237
+  dataset_splitter: KGFSTrainSplitter
+  process_label_func: process_int_label
+  args:
+    walk_length: null
+    single_prompt_edge: True
+    n_way: 2
+    k_shot: 1
+    base_construct: ConstructKG
+    no_class_node: True
+    remove_edge: True
+  num_classes: 2
+
+WN18RR_fs: &WN18RR_fs
+  <<: *LR-link
+  dataset_name: WN18RR
+  dataset_splitter: KGFSSplitter
+  process_label_func: process_int_label
+  args:
+    walk_length: null
+    single_prompt_edge: True
+    n_way: 2
+    k_shot: 1
+    base_construct: ConstructKG
+    no_class_node: True
+    remove_edge: False
   num_classes: 2

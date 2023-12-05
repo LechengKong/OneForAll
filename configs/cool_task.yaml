@@ -182,3 +182,64 @@ chempcba: &chempcba
 chemhiv: &chemhiv
   <<: *E2E-graph
   dataset: chemhiv
+
+
+LR-node: &LR-node
+  eval_pool_mode: mean
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+    - stage: valid
+      split_name: train
+    - stage: valid
+      split_name: valid
+    - stage: test
+      split_name: test
+    - stage: test
+      split_name: train
+
+arxiv_fs: &arxiv_fs
+  <<: *LR-node
+  dataset: arxiv_fs
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: arxiv_fs
+    - stage: valid
+      split_name: valid
+      dataset: cora_fs
+    - stage: test
+      split_name: test
+      dataset: arxiv_fs
+    - stage: test
+      split_name: train
+      dataset: arxiv_fs
+
+LR-link: &LR-link
+  eval_pool_mode: mean
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+    - stage: valid
+      split_name: train
+    - stage: valid
+      split_name: valid
+    - stage: test
+      split_name: test
+    - stage: test
+      split_name: train
+
+FB15K237_fs: &FB15K237_fs
+  <<: *LR-link
+  dataset: FB15K237_fs
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: FB15K237_fs
+    - stage: valid
+      split_name: valid
+      dataset: WN18RR_fs
+    - stage: test
+      split_name: test
+    - stage: test
+      split_name: train

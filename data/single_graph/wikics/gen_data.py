@@ -27,23 +27,14 @@ def get_text(path):
 
     # Process Node Feature
     for node in node_info:
-        node_feature = (
-            (
-                    "feature node. wikipedia entry name: "
-                    + node["title"]
-                    + ". entry content: "
-                    + functools.reduce(lambda x, y: x + " " + y, node["tokens"])
-            )
-            .lower()
-            .strip()
-        )
+        node_feature = ((
+                "feature node. wikipedia entry name: " + node["title"] + ". entry content: " + functools.reduce(
+            lambda x, y: x + " " + y, node["tokens"])).lower().strip())
         node_text_lst.append(node_feature)
 
     # Process Label Feature
     for label in label_info.values():
-        label_feature = (
-            ("prompt node. wikipedia entry category: " + label).lower().strip()
-        )
+        label_feature = (("prompt node. wikipedia entry category: " + label).lower().strip())
         label_text_lst.append(label_feature)
 
     return node_text_lst, label_text_lst
@@ -54,22 +45,9 @@ def get_data(dset):
     cur_path = os.path.dirname(__file__)
     node_texts, label_texts = get_text(cur_path)
     edge_text = ["feature edge. wikipedia page link"]
-    prompt_text = [
-        "prompt node. node classification of wikipedia entry category"
-    ]
+    prompt_text = ["prompt node. node classification of wikipedia entry category"]
     prompt_edge_text = ["prompt edge."]
     prompt_text_map = {"e2e_node": {"noi_node_text_feat": ["noi_node_text_feat", [0]],
-                                    "class_node_text_feat": ["class_node_text_feat",
-                                                             torch.arange(len(label_texts))],
+                                    "class_node_text_feat": ["class_node_text_feat", torch.arange(len(label_texts))],
                                     "prompt_edge_text_feat": ["prompt_edge_text_feat", [0]]}}
-    return (
-        [pyg_data.data],
-        [
-            node_texts,
-            edge_text,
-            prompt_text,
-            label_texts,
-            prompt_edge_text,
-        ],
-        prompt_text_map,
-    )
+    return ([pyg_data.data], [node_texts, edge_text, prompt_text, label_texts, prompt_edge_text, ], prompt_text_map,)

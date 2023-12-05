@@ -97,6 +97,9 @@ class OFAPygDataset(InMemoryDataset):
     def get_task_map(self):
         pass
 
+    def get_edge_list(self, mode="e2e"):
+        pass
+
     def get_prompt_text_feat(self, task_name):
         task_map = self.get_task_map()
         if task_name not in task_map:
