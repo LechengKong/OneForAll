@@ -1,3 +1,5 @@
+from typing import Union, Callable
+
 from gp.utils.datasets import DatasetWithCollate
 import torch_geometric as pyg
 import torch
@@ -13,7 +15,18 @@ from gp.utils.utils import SmartTimer
 
 
 class GraphTextDataset(DatasetWithCollate):
-    def __init__(self, graph, process_label_func, **kwargs):
+    """
+    Base class for all OFA runtime datasets, responsible for loading graphs from OFAPygDataset, subgraphing,
+    and prompt graph construction.
+    """
+    def __init__(self, graph: Union[pyg.data.Data, list[pyg.data.Data]], process_label_func: Callable, **kwargs):
+        """
+        :param graph: Main graph objects, one single graph for single graph dataset, and list of graphs
+                        for list of graphs.
+        :param process_label_func: a Callable function that process the labels from original datasets to accommodate
+                                    different tasks.
+        :param kwargs: additional arguments.
+        """
         self.g = graph
         self.process_label_func = process_label_func
         self.kwargs = kwargs
@@ -30,7 +43,7 @@ class GraphTextDataset(DatasetWithCollate):
         feature_graph = self.make_feature_graph(index)
         prompt_graph = self.make_prompted_graph(feature_graph)
         ret_data = self.to_pyg(feature_graph, prompt_graph)
-        if ("walk_length" in self.kwargs and self.kwargs["walk_length"] is not None):
+        if "walk_length" in self.kwargs and self.kwargs["walk_length"] is not None:
             ret_data.rwpe = scipy_rwpe(ret_data, self.kwargs["walk_length"])
         return ret_data
 

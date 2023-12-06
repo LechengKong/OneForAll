@@ -113,6 +113,10 @@ class BinGraphModel(torch.nn.Module):
 
 
 class BinGraphAttModel(torch.nn.Module):
+    """
+    GNN model that use a single layer attention to pool final node representation across
+    layers.
+    """
     def __init__(self, model, indim, outdim, task_dim, add_rwpe=None, dropout=0.0):
         super().__init__()
         self.model = model

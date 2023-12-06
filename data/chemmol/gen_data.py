@@ -111,6 +111,10 @@ class MolOFADataset(OFAPygDataset):
         return [d for d in pyg_graph], texts, split
 
     def add_text_emb(self, data_list, text_emb):
+        """
+        Since the majority of node/edge text embeddings are repeated, we only store unique
+        ones, and keep the indices.
+        """
         data, slices = self.collate(data_list)
         data.node_embs = text_emb[0]
         data.edge_embs = text_emb[1]
