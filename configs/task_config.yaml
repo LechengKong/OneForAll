@@ -1,392 +1,245 @@
 E2E-node: &E2E-node
-  task_level: e2e_node
-  preprocess: null
-  construct: ConstructNodeCls
-  args:
-    walk_length: null
+  eval_pool_mode: mean
   eval_set_constructs:
+    - stage: train
+      split_name: train
     - stage: valid
       split_name: valid
     - stage: test
       split_name: test
     - stage: test
       split_name: train
-  eval_metric: acc
-  eval_func: classification_func
-  train_only: False
-  eval_only: False
 
 arxiv: &arxiv
   <<: *E2E-node
-  dataset_name: arxiv
-  dataset_splitter: ArxivSplitter
-  process_label_func: process_pth_label
-  num_classes: 40
-
-arxiv_noprompt: &arxiv_noprompt
-  <<: *arxiv
-  construct: ConstructNodeNopromptCls
+  dataset: arxiv
 
 cora_node: &cora_node
   <<: *E2E-node
-  args:
-    walk_length: null
-    single_prompt_edge: False
-  dataset_name: cora
-  dataset_splitter: CiteSplitter
-  process_label_func: process_int_label
-  num_classes: 7
-
-cora_node_noprompt: &cora_node_noprompt
-  <<: *cora_node
-  construct: ConstructNodeNopromptCls
+  dataset: cora_node
 
 pubmed_node: &pubmed_node
   <<: *E2E-node
-  dataset_name: pubmed
-  dataset_splitter: CiteSplitter
-  process_label_func: process_int_label
-  num_classes: 3
+  dataset: pubmed_node
 
 wikics: &wikics
   <<: *E2E-node
-  dataset_name: wikics
-  dataset_splitter: WikiSplitter
-  process_label_func: process_pth_label
-  num_classes: 10
+  dataset: wikics
 
-LR-node: &LR-node
-  task_level: lr_node
-  preprocess: null
-  construct: ConstructNCFSZS
+logic_arxiv:
+  <<: *E2E-node
+  dataset: logic_arxiv
   eval_set_constructs:
-    - stage: valid
-    - stage: test
-  eval_metric: acc
-  eval_func: classification_single_func
-  train_only: False
-  eval_only: False
-  random_flag: True
-
-arxiv_fs: &arxiv_fs
-  <<: *LR-node
-  dataset_name: arxiv
-  args: &arxiv_fs_args
-    walk_length: null
-    n_way: 5
-    min_n: 3
-    val_n: [5, 3]
-    k_shot: 5
-    min_k: 1
-    val_k: [1, 3, 5]
-    q_query: 1
-    fs_task_num: 1
-    class_split_ratio: null
-  mode:
-    train: 0
-    valid: 1
-    test: 2
-  class_emb_flag: False
-
-arxiv_zs: &arxiv_zs
-  <<: *arxiv_fs
-  args:
-    <<: *arxiv_fs_args
-    k_shot: 0
-    min_k: 0
-    val_k: [0]
-  class_emb_flag: True
-
-cora_fs: &cora_fs
-  <<: *LR-node
-  dataset_name: cora
-  args: &cora_fs_args
-    walk_length: null
-    n_way: 5
-    min_n: 2
-    val_n: [5, 2]
-    k_shot: 5
-    min_k: 1
-    val_k: [1, 3, 5]
-    q_query: 1
-    fs_task_num: 1
-    class_split_ratio: [0, 0, 7]
-  mode:
-    valid: 2
-    test: 2
-  class_emb_flag: False
-  eval_only: True
-
-cora_zs: &cora_zs
-  <<: *cora_fs
-  args:
-    <<: *cora_fs_args
-    k_shot: 0
-    min_k: 0
-    val_k: [0]
-  class_emb_flag: True
-
-E2E-link: &E2E-link
-  task_level: e2e_link
-  args:
-    remove_edge: True
-    walk_length: null
-  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: logic_arxiv
     - stage: valid
       split_name: valid
-      args:
-        remove_edge: False
-        walk_length: null
+      dataset: logic_cora
     - stage: test
       split_name: test
-      args:
-        remove_edge: False
-        walk_length: null
+      dataset: logic_cora
     - stage: test
       split_name: train
-      args:
-        remove_edge: True
-        walk_length: null
-  train_only: False
-  eval_only: False
+      dataset: logic_cora
+
+logic_cora:
+  <<: *E2E-node
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: cora_node
+    - stage: valid
+      split_name: valid
+      dataset: cora_node
+    - stage: valid
+      split_name: valid
+      dataset: logic_cora
+    - stage: test
+      split_name: test
+      dataset: logic_cora
+    - stage: test
+      split_name: train
+      dataset: logic_cora
+
+E2E-link: &E2E-link
+  eval_pool_mode: mean
+  task_level: e2e_link
 
 cora_link: &cora_link
   <<: *E2E-link
-  dataset_name: cora
-  dataset_splitter: CiteLinkSplitter
-  preprocess: LinkConstructGraph
-  construct: ConstructLinkCls
-  process_label_func: process_int_label
-  eval_metric: auc
-  eval_func: binary_auc_func
-  num_classes: 2
-
-cora_link_noprompt: &cora_link_noprompt
-  <<: *cora_link
-  construct: ConstructLinkNopromptCls
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: cora_link
+    - stage: valid
+      split_name: valid
+      dataset: cora_link_eval
+    - stage: valid
+      split_name: valid
+      dataset: cora_node
+    - stage: test
+      split_name: test
+      dataset: cora_link_eval
+    - stage: test
+      split_name: train
+      dataset: cora_link
 
 pubmed_link: &pubmed_link
-  <<: *cora_link
-  dataset_name: pubmed
+  <<: *E2E-link
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: pubmed_link
+    - stage: valid
+      split_name: valid
+      dataset: pubmed_link_eval
+    - stage: test
+      split_name: test
+      dataset: pubmed_link_eval
+    - stage: test
+      split_name: train
+      dataset: pubmed_link
+
+FB15K237: &FB15K237
+  <<: *E2E-link
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: FB15K237
+    - stage: valid
+      split_name: valid
+      dataset: FB15K237_eval
+    - stage: test
+      split_name: test
+      dataset: FB15K237_eval
+    - stage: test
+      split_name: train
+      dataset: FB15K237
 
 WN18RR: &WN18RR
   <<: *E2E-link
-  dataset_name: WN18RR
-  dataset_splitter: KGSplitter
-  preprocess: null
-  construct: ConstructKG
-  process_label_func: process_int_label
-  eval_metric: acc
-  eval_func: classification_func
-  num_classes: 11
-
-FB15K237: &FB15K237
-  <<: *WN18RR
-  dataset_name: FB15K237
-  num_classes: 237
-
-LR-link: &LR-link
-  <<: *LR-node
-  task_level: lr_link
-  construct: ConstructLPFSZS
-
-fb_fs: &fb_fs
-  <<: *LR-link
-  dataset_name: FB15K237
-  args: &fb_fs_args
-    walk_length: null
-    n_way: 10
-    min_n: 5
-    val_n: [10, 5]
-    k_shot: 5
-    min_k: 1
-    val_k: [1, 3, 5]
-    q_query: 1
-    fs_task_num: 1
-    class_split_ratio: null
-  mode:
-    train: 0
-    valid: 1
-    test: 2
-  class_emb_flag: False
-
-fb_zs: &fb_zs
-  <<: *fb_fs
-  args:
-    <<: *fb_fs_args
-    k_shot: 0
-    min_k: 0
-    val_k: [0]
-  class_emb_flag: True
-
-wn_fs: &wn_fs
-  <<: *LR-link
-  dataset_name: WN18RR
-  args: &wn_fs_args
-    walk_length: null
-    n_way: 10
-    min_n: 5
-    val_n: [10, 5]
-    k_shot: 5
-    min_k: 1
-    val_k: [1, 3, 5]
-    q_query: 1
-    fs_task_num: 1
-    class_split_ratio: [0, 0, 11]
-  mode:
-    valid: 2
-    test: 2
-  class_emb_flag: False
-  eval_only: True
-
-wn_zs: &wn_zs
-  <<: *wn_fs
-  args:
-    <<: *wn_fs_args
-    k_shot: 0
-    min_k: 0
-    val_k: [0]
-  class_emb_flag: True
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: WN18RR
+    - stage: valid
+      split_name: valid
+      dataset: WN18RR_eval
+    - stage: test
+      split_name: test
+      dataset: WN18RR_eval
+    - stage: test
+      split_name: train
+      dataset: WN18RR
 
 E2E-graph: &E2E-graph
   task_level: e2e_graph
-  dataset_splitter: MolSplitter
-  preprocess: null
-  construct: ConstructMolCls
-  args:
-    walk_length: null
+  eval_pool_mode: mean
   eval_set_constructs:
+    - stage: train
+      split_name: train
     - stage: valid
       split_name: valid
     - stage: test
       split_name: test
     - stage: test
       split_name: train
-  train_only: False
-  eval_only: False
 
 chemblpre: &chemblpre
   <<: *E2E-graph
-  dataset_name: chemblpre
-  process_label_func: process_positive_negative_multi_label
   eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: chemblpre
     - stage: valid
       split_name: valid
-      process_label_func: process_label_positive_only
+      dataset: chempcba_eval
+    - stage: valid
+      split_name: valid
+      dataset: chemhiv
     - stage: test
       split_name: test
-      process_label_func: process_label_positive_only
-  eval_metric: apr
-  eval_func: binary_apr_func
-  num_classes: 1295
-  train_only: False
+      dataset: chemhiv
 
 chempcba: &chempcba
   <<: *E2E-graph
-  dataset_name: chempcba
-  process_label_func: process_positive_negative_multi_label
+  train: chempcba
   eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: chempcba
     - stage: valid
       split_name: valid
-      process_label_func: process_label_positive_only
+      dataset: chempcba_eval
     - stage: test
       split_name: test
-      process_label_func: process_label_positive_only
+      dataset: chempcba_eval
     - stage: test
       split_name: train
-      process_label_func: process_label_positive_only
-  eval_metric: apr
-  eval_func: binary_apr_func
-  num_classes: 128
+      dataset: chempcba
 
 chemhiv: &chemhiv
   <<: *E2E-graph
-  dataset_name: chemhiv
-  process_label_func: process_reverse_binary_label
-  eval_metric: auc
-  eval_func: binary_auc_func
-  num_classes: 2
+  dataset: chemhiv
 
-chemhiv_noprompt: &chemhiv_noprompt
-  <<: *chemhiv
-  construct: ConstructMolNopromptCls
 
-LR-graph: &LR-graph
-  task_level: lr_graph
-  dataset_splitter: MolSplitter
-  preprocess: null
-  construct: ConstructGCFSZS
-  args: &LR_graph_args
-    walk_length: null
-    target_class: null
-    min_n: null
-    min_k: null
+LR-node: &LR-node
+  eval_pool_mode: mean
   eval_set_constructs:
+    - stage: train
+      split_name: train
     - stage: valid
+      split_name: train
+    - stage: valid
+      split_name: valid
     - stage: test
-  train_only: False
-  eval_only: False
+      split_name: test
+    - stage: test
+      split_name: train
 
-chemblpre_fs: &chemblpre_fs
-  <<: *LR-graph
-  dataset_name: chemblpre
-  process_label_func: process_multi_label_double
-  args:
-    <<: *LR_graph_args
-    k_shot: 1
-  train_only: True
+arxiv_fs: &arxiv_fs
+  <<: *LR-node
+  dataset: arxiv_fs
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: arxiv_fs
+    - stage: valid
+      split_name: valid
+      dataset: cora_fs
+    - stage: test
+      split_name: test
+      dataset: arxiv_fs
+    - stage: test
+      split_name: train
+      dataset: arxiv_fs
 
-chemblpre_zs: &chemblpre_zs
-  <<: *chemblpre_fs
-  args:
-    <<: *LR_graph_args
-    k_shot: 0
+LR-link: &LR-link
+  eval_pool_mode: mean
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+    - stage: valid
+      split_name: train
+    - stage: valid
+      split_name: valid
+    - stage: test
+      split_name: test
+    - stage: test
+      split_name: train
 
-chemhiv_fs: &chemhiv_fs
-  <<: *LR-graph
-  dataset_name: chemhiv
-  process_label_func: hiv_trim_class
-  args: &chemhiv_fs_args
-    <<: *LR_graph_args
-    k_shot: 1
-    val_n: [null]
-    val_k: [1, 3, 5, 10]
-    classes: 1
-  eval_metric: auc
-  eval_func: binary_single_auc_func
-  eval_only: True
-
-chemhiv_zs: &chemhiv_zs
-  <<: *chemhiv_fs
-  process_label_func: hiv_zs_class
-  args:
-    <<: *chemhiv_fs_args
-    k_shot: 0
-    val_k: [0]
-
-chempcba_fs: &chempcba_fs
-  <<: *LR-graph
-  dataset_name: chempcba
-  process_label_func: process_multi_label
-  args: &chempcba_fs_args
-    <<: *LR_graph_args
-    k_shot: 1
-    val_n: [49, 60, 47, 94, 93]
-    val_k: [1, 3, 5, 10]
-    classes: 1
-  eval_metric: auc
-  eval_func: binary_single_auc_func
-  eval_only: True
-
-chempcba_zs: &chempcba_zs
-  <<: *LR-graph
-  dataset_name: chempcba
-  process_label_func: process_multi_label
-  args:
-    <<: *chempcba_fs_args
-    k_shot: 0
-    val_n: [null]
-    val_k: [1, 3, 5, 10]
-    classes: 128
-  eval_metric: aucmulti
-  eval_func: binary_auc_multi_func
+FB15K237_fs: &FB15K237_fs
+  <<: *LR-link
+  dataset: FB15K237_fs
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: FB15K237_fs
+    - stage: valid
+      split_name: valid
+      dataset: WN18RR_fs
+    - stage: test
+      split_name: test
+    - stage: test
+      split_name: train

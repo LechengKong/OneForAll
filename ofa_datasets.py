@@ -6,26 +6,26 @@ import torch
 import numpy as np
 from scipy.sparse import csr_array, coo_array
 from gp.utils.graph import sample_fixed_hop_size_neighbor
-from fs_datamanager import FewShotDataManager
-from torch_geometric.data import Batch
-from torch_geometric.utils import dropout_edge
+from abc import ABC, abstractmethod
 from utils import scipy_rwpe, set_mask
 
 from gp.utils.utils import SmartTimer
 
 
-class GraphTextDataset(DatasetWithCollate):
+class GraphTextDataset(DatasetWithCollate, ABC):
     """
     Base class for all OFA runtime datasets, responsible for loading graphs from OFAPygDataset, subgraphing,
     and prompt graph construction.
     """
+
     def __init__(self, graph: Union[pyg.data.Data, list[pyg.data.Data]], process_label_func: Callable, **kwargs):
         """
-        :param graph: Main graph objects, one single graph for single graph dataset, and list of graphs
+        Args:
+            graph: Main graph objects, one single graph for single graph dataset, and list of graphs
                         for list of graphs.
-        :param process_label_func: a Callable function that process the labels from original datasets to accommodate
+            process_label_func: a Callable function that process the labels from original datasets to accommodate
                                     different tasks.
-        :param kwargs: additional arguments.
+            **kwargs: additional arguments.
         """
         self.g = graph
         self.process_label_func = process_label_func
@@ -47,13 +47,49 @@ class GraphTextDataset(DatasetWithCollate):
             ret_data.rwpe = scipy_rwpe(ret_data, self.kwargs["walk_length"])
         return ret_data
 
-    def make_feature_graph(self, index):
+    @abstractmethod
+    def make_feature_graph(self, index) -> list:
+        """
+        Create feature subgraph based on index
+
+        Args:
+            index: int
+
+        Returns:
+            feat: torch.Tensor, node vector representations
+            edge_feat: torch.Tensor, edge vector representations
+            edge_index: torch.Tensor, feature edge indices
+            e_type: torch.Tensor, feature edge types most likely 0-vector
+            target_node_id: torch.Tensor, the indices of NOI
+            class_emb: class node vector representations
+            binary_rep: one-/multi-hot label representations
+        """
         pass
 
+    @abstractmethod
     def make_prompt_node(self, feat, class_emb):
+        """
+        Create prompt node features
+        Args:
+            feat: feature graph node features
+            class_emb: class node features
+
+        Returns:
+            prompt_graph_node_features: prompt graph node features
+        """
         pass
 
     def make_prompted_graph(self, feature_graph):
+        """
+        Create prompted graph based on feature graphs, prompt edge construction is based on self.prompt_edge_list.
+        self.prompt_edge_list defines connection types, edge_type indices, and indices in to self.prompt_edge_emb.
+        Refer to data.ofa_data.OFAPygDataset.get_edge_list for details.
+        Args:
+            feature_graph: output from self.make_feature_graph
+
+        Returns:
+
+        """
         (feat, edge_feat, edge_index, e_type, target_node_id, class_emb, label, binary_rep,) = feature_graph
         n_feat_node = len(feat)
         feat = self.make_prompt_node(feat, class_emb)
@@ -97,6 +133,9 @@ class GraphTextDataset(DatasetWithCollate):
         return pyg.loader.dataloader.Collater(None, None)
 
     def process_label(self, label):
+        """
+        Process labels into one-/multi-hot format using self.process_label_func
+        """
         if self.process_label_func is None:
             trimed_class = torch.zeros((1, len(self.class_emb)))
             trimed_class[0, label] = 1
@@ -106,6 +145,10 @@ class GraphTextDataset(DatasetWithCollate):
 
 
 class SubgraphDataset(GraphTextDataset):
+    """
+    Build feature subgraphs from a large graph, used mostly in node/link tasks
+    """
+
     def __init__(self, pyg_graph, class_emb, prompt_edge_emb, data_idx, hop=2, class_mapping=None, to_undirected=False,
                  process_label_func=None, adj=None, **kwargs, ):
         super().__init__(pyg_graph, process_label_func, **kwargs)
@@ -149,6 +192,7 @@ class SubgraphDataset(GraphTextDataset):
         return (feat, edge_feat, edge_index, e_type, target_node_id, emb, label, binary_rep,)
 
     def make_prompt_node(self, feat, class_emb):
+        # Only feature nodes and class nodes, no NOI node.
         if not self.no_class_node:
             feat = torch.cat([feat, class_emb], dim=0)
         return feat
@@ -183,6 +227,8 @@ class SubgraphHierDataset(SubgraphDataset):
         return len(self.data_idx)
 
     def make_prompt_node(self, feat, class_emb):
+        # Add class node in zero-shot scenario. In few-shot scenario, only NOI node. Class nodes will be added by
+        # future dataset wrapper
         if self.no_class_node:
             feat = torch.cat([feat, self.noi_node_emb], dim=0)
         else:
@@ -218,6 +264,8 @@ class SubgraphLinkHierDataset(SubgraphHierDataset):
         self.edges = edges
         self.pos_index = len(self.edges)
         self.remove_edge = remove_edge
+
+        # Sample negative edges for training and testing
         dense_adj = self.adj.todense() == 0
         neg_row, neg_col = np.nonzero(dense_adj)
         neg_edge_idx = np.random.permutation(len(neg_row))[: self.pos_index]
@@ -247,6 +295,8 @@ class SubgraphLinkHierDataset(SubgraphHierDataset):
         edges = self.adj[neighbors, :][:, neighbors].tocoo()
         row = edges.row
         col = edges.col
+
+        # Remove target edge from train graphs
         if self.remove_edge and index < self.pos_index:
             row, col = self.remove_link(row, col)
         edge_index = torch.stack([torch.tensor(row, dtype=torch.long), torch.tensor(col, dtype=torch.long), ])
@@ -309,11 +359,17 @@ class SubgraphKGHierDataset(SubgraphHierDataset):
         edge_index = torch.cat([edge_index, edge_index[[1, 0]]], dim=-1)
         feat = self.g.node_text_feat[neighbors]
         e_type = torch.zeros(len(edge_index[0]), dtype=torch.long)
+
+        # Inverse edge type index equals orignal edge type index plus # edge types.
         edge_feat = self.g.edge_text_feat[torch.cat([edge_type, edge_type + int(len(self.g.edge_text_feat) / 2)])]
         return (feat, edge_feat, edge_index, e_type, target_node_id, embs, label, binary_rep,)
 
 
 class GraphListDataset(GraphTextDataset):
+    """
+    Dataset generate prompted graph from a list of graphs. Mostly used for graph tasks.
+    """
+
     def __init__(self, graphs, class_embs, prompt_edge_emb, data_idx, process_label_func=None, **kwargs, ):
         super().__init__(graphs, process_label_func, **kwargs)
         self.class_emb = class_embs
@@ -400,6 +456,17 @@ class GraphListHierDataset(GraphListDataset):
 
 class FewShotDataset(DatasetWithCollate):
     def __init__(self, fsmanager, query_graph_dataset, support_graph_dataset, fs_edge_feats, sample_size=1000):
+        """
+        FewShotDataset: use data indices generated from fsmanager to index into
+        query_graph_dataset/support_graph_dataset (GraphTextDataset) to get query and support prompted graph only
+        with NOI prompt node. It them assembles the graphs to a few-shot in-context prompted graphs.
+        Args:
+            fsmanager: query and support data indices manager
+            query_graph_dataset: GraphTextDataset
+            support_graph_dataset: GraphTextDataset
+            fs_edge_feats: Few-shot edge features
+            sample_size: number of samples, to be used with Dataloader
+        """
         super().__init__()
         # mode 0 for sample index from training classes, 1 for val, 2 for test
         self.fs_idx_loader = fsmanager
@@ -418,11 +485,8 @@ class FewShotDataset(DatasetWithCollate):
         return self.sample_size
 
     def __getitem__(self, index):
-        # sm = SmartTimer()
-        # sm.record()
-        # return node ids for an n_way k_shot q_query meta task
-        # node_ids: (n_way, k_shot + q_query)
-        # node_cls: (1, n_way), representing true classes corresponding to n ways
+        # node_ids: (n_way, k_shot + 1)
+        # node_cls: (n_way), representing true classes corresponding to n ways to query into class_emb
         node_ids, class_ind = self.fs_idx_loader.get_few_shot_idx()
         n_way = len(class_ind)
         k_shot = len(node_ids[0]) - 1
@@ -442,6 +506,7 @@ class FewShotDataset(DatasetWithCollate):
                     spt_graphs.append(
                         self.get_noi_graph(self.support_graph_dataset, node_ids[cls_idx, shot_idx], class_emb))
 
+        # Randomly select one query node
         qry_ind = torch.randint(n_way, (1, 1))
         qry_graph = qry_graphs[qry_ind.view(-1)]
         graphs = [qry_graph] + spt_graphs
@@ -485,6 +550,11 @@ class FewShotDataset(DatasetWithCollate):
 
 
 class MultiDataset(DatasetWithCollate):
+    """
+    One dataset that wraps different GraphTextDataset for training. It also dynamically manage the portion of
+    the training datasets in each epoch based on validation results.
+    """
+
     def __init__(self, datas, data_val_index=None, dataset_multiple=1, window_size=3, patience=3, min_ratio=0.1,
                  mode=None, ):
         self.datas = datas

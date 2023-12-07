@@ -4,6 +4,7 @@ import json
 import numpy as np
 import copy
 
+import utils
 from data.KG.gen_data import KGOFADataset
 from data.chemmol.gen_data import MolOFADataset
 from data.single_graph.gen_data import SingleGraphOFADataset
@@ -16,16 +17,19 @@ from fs_datamanager import FewShotDataManager, SimpleFSManager
 from gp.utils.utils import k_fold_ind, k_fold2_split
 from gp.lightning.data_template import DataWithMeta
 
+# TODO: Instead of using global() to access these functions, come up with something more elegant
 from gp.lightning.metric import (binary_auc_func, flat_binary_func, classification_func, EvalKit, )
 from utils import (binary_apr_func, binary_auc_multi_func, binary_single_auc_func, classification_single_func,
                    flat_auc, )
 
-# import os
-# os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-
 name2dataset = {"arxiv": SingleGraphOFADataset, "Cora": SingleGraphOFADataset, "Pubmed": SingleGraphOFADataset,
                 "WN18RR": KGOFADataset, "FB15K237": KGOFADataset, "wikics": SingleGraphOFADataset,
                 "chemblpre": MolOFADataset, "chempcba": MolOFADataset, "chemhiv": MolOFADataset, }
+
+
+########################################################################
+# Dataset split functions, split datasets into train/valid/test splits #
+########################################################################
 
 
 def ArxivSplitter(dataset):
@@ -148,11 +152,9 @@ def MolSplitter(dataset):
     return dataset.get_idx_split()
 
 
-name2splitter = {"arxiv": ArxivSplitter, "cora_node": CiteSplitter, "pubmed_node": CiteSplitter,
-                 "cora_link": CiteLinkSplitter, "pubmed_link": CiteLinkSplitter, "WN18RR": KGSplitter,
-                 "FB15K237": KGSplitter, "wikics": WikiSplitter, "chemblpre": MolSplitter, "chempcba": MolSplitter,
-                 "chemhiv": MolSplitter, }
-
+#############################################
+#   Preprocessing functions                 #
+#############################################
 
 def LinkConstructGraph(dataset, split):
     text_g = dataset.data
@@ -179,10 +181,15 @@ def KGConstructEdgeList(dataset, split):
 
 
 def make_data(name, data, split_name, metric, eval_func, num_classes, **kwargs):
+    # Wrap GraphTextDataset with DataWithMeta for easy evaluator construction
     return DataWithMeta(data, kwargs["batch_size"], sample_size=kwargs["sample_size"], metric=metric,
                         state_name=split_name + "_" + name, classes=num_classes,
                         meta_data={"eval_func": eval_func, "eval_mode": kwargs["eval_mode"]}, )
 
+
+######################################################
+#   Construct GraphTextDataset                       #
+######################################################
 
 def ConstructNodeCls(dataset, split, split_name, prompt_feats, to_bin_cls_func, global_data, task_level, **kwargs):
     text_g = dataset.data
@@ -268,6 +275,10 @@ def ConstructFSTask(dataset, split, split_name, prompt_feats, to_bin_cls_func, g
                           prompt_feats["prompt_edge_text_feat"][1:])
 
 
+####################################
+#   process_label_function         #
+####################################
+
 def process_pth_label(embs, label):
     binary_rep = torch.zeros((1, len(embs)))
     binary_rep[0, label.squeeze().to(torch.long)] = 1
@@ -350,8 +361,23 @@ none_process_label = None
 
 
 class UnifiedTaskConstructor:
-    def __init__(self, tasks, encoder, task_config_lookup, data_config_lookup, root="cache_data", batch_size=256,
-                 sample_size=-1):
+    def __init__(self, tasks: list[str], encoder: utils.SentenceEncoder, task_config_lookup: dict,
+                 data_config_lookup: dict, root="cache_data", batch_size=256, sample_size=-1):
+        """
+        Construct tasks from a dictionary of dataset configurations. A task must contain a train dataset, but can
+        have arbitrary number of valid/test dataset. A valid/test dataset is wrapped by a
+        gp.lightning.data_template.DataWithMeta that contains information for evaluation metrics
+
+        self.construct_exp construct all datasets.
+        Args:
+            tasks: a list of task names, they should be keys in the task_config_lookup
+            encoder: utils.SentenceEncoder
+            task_config_lookup: a dictionary for tasks, more details in Readme
+            data_config_lookup: a dictionary for datasets construction in Readme
+            root: dataset loading directory
+            batch_size: int
+            sample_size: int, -1 means full dataste
+        """
         self.root = root
         self.tasks = tasks
         self.encoder = encoder
@@ -382,6 +408,10 @@ class UnifiedTaskConstructor:
         return val_task_index_lst, val_pool_mode
 
     def construct_task(self, config):
+        """
+        Datasets in a task are described in config["eval_set_constructs"] that describe the stage (train/valid/test)
+        of the dataset.
+        """
         val_task_index = []
         for stage_config in config["eval_set_constructs"]:
             if "dataset" not in stage_config:
@@ -411,6 +441,9 @@ class UnifiedTaskConstructor:
         return self.dataset[dataset_name]
 
     def get_data_split(self, dataset_config):
+        """
+        Split data based on task_level
+        """
         split_key = self.get_split_key(dataset_config)
         if split_key not in self.dataset_split:
             dataset_splitter = dataset_config.get("dataset_splitter")
@@ -420,6 +453,10 @@ class UnifiedTaskConstructor:
         return self.dataset_split[split_key]
 
     def get_global_data(self, dataset_config):
+        """
+        If global_data for a dataset is required, such as constructed train graph for link tasks, a preprocessing
+        function is called and the returned values are stored.
+        """
         split_key = self.get_split_key(dataset_config)
         if split_key not in self.preprocess_storage:
             preprocessor = dataset_config.get("preprocess")
@@ -432,6 +469,7 @@ class UnifiedTaskConstructor:
         data = self.get_ofa_data(dataset_config)
         split = self.get_data_split(dataset_config)
         stage_name = self.get_stage_name(stage_config, dataset_config)
+        # Evaluation datasets are constructed only once.
         if stage_config["stage"] != "train" and stage_name in self.stage_names[stage_config["stage"]]:
             return self.stage_names[stage_config["stage"]].index(stage_name)
         global_data = self.get_global_data(dataset_config)

@@ -1,0 +1,17 @@
+batch_size: 32
+eval_batch_size: 32
+dropout: 0.15
+lr: 0.001
+num_layers: 7
+JK : "none"
+task_names:
+  - "arxiv_fs"
+  - "FB15K237_fs"
+
+d_multiple:
+  - 10
+  - 10
+
+d_min_ratio:
+  - 5
+  - 5

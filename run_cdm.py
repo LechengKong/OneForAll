@@ -35,7 +35,7 @@ from task_constructor import UnifiedTaskConstructor
 def main(params):
     encoder = SentenceEncoder(params.llm_name, batch_size=params.llm_b_size)
     task_config_lookup = load_yaml(
-        os.path.join(os.path.dirname(__file__), "configs", "cool_task.yaml")
+        os.path.join(os.path.dirname(__file__), "configs", "task_config.yaml")
     )
     data_config_lookup = load_yaml(os.path.join(os.path.dirname(__file__), "configs", "data_config.yaml"))
 
