@@ -176,10 +176,42 @@ arxiv_fs: &arxiv_fs
     walk_length: null
     single_prompt_edge: True
     n_way: 5
-    k_shot: 1
+    k_shot: 5
+    min_k_shot: 0
     base_construct: ConstructNodeCls
     no_class_node: True
   num_classes: 5
+
+arxiv_fs_51:
+  <<: *arxiv_fs
+  args:
+    walk_length: null
+    single_prompt_edge: True
+    n_way: 5
+    k_shot: 1
+    base_construct: ConstructNodeCls
+    no_class_node: True
+
+
+arxiv_fs_53:
+  <<: *arxiv_fs
+  args:
+    walk_length: null
+    single_prompt_edge: True
+    n_way: 5
+    k_shot: 3
+    base_construct: ConstructNodeCls
+    no_class_node: True
+
+arxiv_fs_55:
+  <<: *arxiv_fs
+  args:
+    walk_length: null
+    single_prompt_edge: True
+    n_way: 5
+    k_shot: 5
+    base_construct: ConstructNodeCls
+    no_class_node: True
 
 cora_fs: &cora_fs
   <<: *LR-node
@@ -194,6 +226,78 @@ cora_fs: &cora_fs
     base_construct: ConstructNodeCls
     no_class_node: True
   num_classes: 2
+
+cora_fs_21:
+  <<: *cora_fs
+  args:
+    walk_length: null
+    single_prompt_edge: True
+    n_way: 2
+    k_shot: 1
+    base_construct: ConstructNodeCls
+    no_class_node: True
+  num_classes: 2
+
+
+cora_fs_23:
+  <<: *cora_fs
+  args:
+    walk_length: null
+    single_prompt_edge: True
+    n_way: 2
+    k_shot: 3
+    base_construct: ConstructNodeCls
+    no_class_node: True
+  num_classes: 2
+
+
+cora_fs_25:
+  <<: *cora_fs
+  args:
+    walk_length: null
+    single_prompt_edge: True
+    n_way: 2
+    k_shot: 5
+    base_construct: ConstructNodeCls
+    no_class_node: True
+  num_classes: 2
+
+
+cora_fs_71:
+  <<: *cora_fs
+  args:
+    walk_length: null
+    single_prompt_edge: True
+    n_way: 7
+    k_shot: 1
+    base_construct: ConstructNodeCls
+    no_class_node: True
+  num_classes: 7
+
+
+cora_fs_73:
+  <<: *cora_fs
+  args:
+    walk_length: null
+    single_prompt_edge: True
+    n_way: 7
+    k_shot: 3
+    base_construct: ConstructNodeCls
+    no_class_node: True
+  num_classes: 7
+
+
+cora_fs_75:
+  <<: *cora_fs
+  args:
+    walk_length: null
+    single_prompt_edge: True
+    n_way: 7
+    k_shot: 5
+    base_construct: ConstructNodeCls
+    no_class_node: True
+  num_classes: 7
+
 
 LR-link: &LR-link
   task_level: lr_link
@@ -214,12 +318,90 @@ FB15K237_fs: &FB15K237_fs
   args:
     walk_length: null
     single_prompt_edge: True
-    n_way: 2
+    n_way: 20
+    k_shot: 5
+    min_k_shot: 1
+    min_n_way: 10
+    base_construct: ConstructKG
+    no_class_node: True
+    remove_edge: True
+  num_classes: 20
+
+FB15K237_fs_101:
+  <<: *FB15K237_fs
+  args:
+    walk_length: null
+    single_prompt_edge: True
+    n_way: 10
     k_shot: 1
     base_construct: ConstructKG
     no_class_node: True
     remove_edge: True
-  num_classes: 2
+  num_classes: 10
+
+
+FB15K237_fs_103:
+  <<: *FB15K237_fs
+  args:
+    walk_length: null
+    single_prompt_edge: True
+    n_way: 10
+    k_shot: 3
+    base_construct: ConstructKG
+    no_class_node: True
+    remove_edge: True
+  num_classes: 10
+
+FB15K237_fs_105:
+  <<: *FB15K237_fs
+  args:
+    walk_length: null
+    single_prompt_edge: True
+    n_way: 10
+    k_shot: 5
+    base_construct: ConstructKG
+    no_class_node: True
+    remove_edge: True
+  num_classes: 10
+
+
+FB15K237_fs_201:
+  <<: *FB15K237_fs
+  args:
+    walk_length: null
+    single_prompt_edge: True
+    n_way: 20
+    k_shot: 1
+    base_construct: ConstructKG
+    no_class_node: True
+    remove_edge: True
+  num_classes: 20
+
+
+FB15K237_fs_203:
+  <<: *FB15K237_fs
+  args:
+    walk_length: null
+    single_prompt_edge: True
+    n_way: 20
+    k_shot: 3
+    base_construct: ConstructKG
+    no_class_node: True
+    remove_edge: True
+  num_classes: 20
+
+FB15K237_fs_205:
+  <<: *FB15K237_fs
+  args:
+    walk_length: null
+    single_prompt_edge: True
+    n_way: 20
+    k_shot: 5
+    base_construct: ConstructKG
+    no_class_node: True
+    remove_edge: True
+  num_classes: 20
+
 
 WN18RR_fs: &WN18RR_fs
   <<: *LR-link
@@ -229,9 +411,47 @@ WN18RR_fs: &WN18RR_fs
   args:
     walk_length: null
     single_prompt_edge: True
-    n_way: 2
+    n_way: 5
     k_shot: 1
     base_construct: ConstructKG
     no_class_node: True
     remove_edge: False
-  num_classes: 2
+  num_classes: 5
+
+
+WN18RR_fs_51:
+  <<: *WN18RR_fs
+  args:
+    walk_length: null
+    single_prompt_edge: True
+    n_way: 5
+    k_shot: 1
+    base_construct: ConstructKG
+    no_class_node: True
+    remove_edge: False
+  num_classes: 5
+
+WN18RR_fs_53:
+  <<: *WN18RR_fs
+  args:
+    walk_length: null
+    single_prompt_edge: True
+    n_way: 5
+    k_shot: 3
+    base_construct: ConstructKG
+    no_class_node: True
+    remove_edge: False
+  num_classes: 5
+
+
+WN18RR_fs_55:
+  <<: *WN18RR_fs
+  args:
+    walk_length: null
+    single_prompt_edge: True
+    n_way: 5
+    k_shot: 5
+    base_construct: ConstructKG
+    no_class_node: True
+    remove_edge: False
+  num_classes: 5

@@ -270,7 +270,8 @@ def ConstructFSTask(dataset, split, split_name, prompt_feats, to_bin_cls_func, g
                                                                 to_bin_cls_func=None, global_data=global_data,
                                                                 task_level=task_level, **kwargs)
 
-    fs_loader = SimpleFSManager(split[split_name][0], query_idx, kwargs["k_shot"], 1, kwargs["n_way"])
+    fs_loader = SimpleFSManager(split[split_name][0], query_idx, kwargs["k_shot"], 1, kwargs["n_way"],
+                                kwargs.get("min_k_shot"), kwargs.get("min_n_way"))
     return FewShotDataset(fs_loader, query_graph_dataset, support_graph_dataset,
                           prompt_feats["prompt_edge_text_feat"][1:])
 
@@ -432,7 +433,8 @@ class UnifiedTaskConstructor:
         return dataset_config["dataset_name"] + "_" + dataset_config["task_level"]
 
     def get_stage_name(self, stage_config, dataset_config):
-        return "_".join([self.get_split_key(dataset_config), stage_config["stage"], stage_config["split_name"]])
+        return "_".join([stage_config["dataset"], self.get_split_key(dataset_config), stage_config["stage"],
+                         stage_config["split_name"]])
 
     def get_ofa_data(self, dataset_config):
         dataset_name = dataset_config["dataset_name"]
@@ -466,6 +468,7 @@ class UnifiedTaskConstructor:
         return self.preprocess_storage[split_key]
 
     def add_dataset(self, stage_config, dataset_config):
+        print(dataset_config)
         data = self.get_ofa_data(dataset_config)
         split = self.get_data_split(dataset_config)
         stage_name = self.get_stage_name(stage_config, dataset_config)

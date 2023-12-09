@@ -169,6 +169,7 @@ def main(params):
         load_best=False,
         reload_freq=1,
         test_rep=params.test_rep,
+        val_interval=params.val_interval
         # profiler="simple",
         # accelerator="cpu",
     )

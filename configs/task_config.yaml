@@ -207,13 +207,58 @@ arxiv_fs: &arxiv_fs
       dataset: arxiv_fs
     - stage: valid
       split_name: valid
-      dataset: cora_fs
+      dataset: arxiv_fs_51
+    - stage: valid
+      split_name: valid
+      dataset: arxiv_fs_53
+    - stage: valid
+      split_name: valid
+      dataset: arxiv_fs_55
+    - stage: valid
+      split_name: valid
+      dataset: cora_fs_21
+    - stage: valid
+      split_name: valid
+      dataset: cora_fs_23
+    - stage: valid
+      split_name: valid
+      dataset: cora_fs_25
+    - stage: valid
+      split_name: valid
+      dataset: cora_fs_71
+    - stage: valid
+      split_name: valid
+      dataset: cora_fs_73
+    - stage: valid
+      split_name: valid
+      dataset: cora_fs_75
     - stage: test
       split_name: test
-      dataset: arxiv_fs
+      dataset: arxiv_fs_51
     - stage: test
-      split_name: train
-      dataset: arxiv_fs
+      split_name: test
+      dataset: arxiv_fs_53
+    - stage: test
+      split_name: test
+      dataset: arxiv_fs_55
+    - stage: test
+      split_name: test
+      dataset: cora_fs_21
+    - stage: test
+      split_name: test
+      dataset: cora_fs_23
+    - stage: test
+      split_name: test
+      dataset: cora_fs_25
+    - stage: test
+      split_name: test
+      dataset: cora_fs_71
+    - stage: test
+      split_name: test
+      dataset: cora_fs_73
+    - stage: test
+      split_name: test
+      dataset: cora_fs_75
 
 LR-link: &LR-link
   eval_pool_mode: mean
@@ -238,8 +283,55 @@ FB15K237_fs: &FB15K237_fs
       dataset: FB15K237_fs
     - stage: valid
       split_name: valid
-      dataset: WN18RR_fs
+      dataset: FB15K237_fs_101
+    - stage: valid
+      split_name: valid
+      dataset: FB15K237_fs_103
+    - stage: valid
+      split_name: valid
+      dataset: FB15K237_fs_105
+    - stage: valid
+      split_name: valid
+      dataset: FB15K237_fs_201
+    - stage: valid
+      split_name: valid
+      dataset: FB15K237_fs_203
+    - stage: valid
+      split_name: valid
+      dataset: FB15K237_fs_205
+    - stage: valid
+      split_name: valid
+      dataset: WN18RR_fs_51
+    - stage: valid
+      split_name: valid
+      dataset: WN18RR_fs_53
+    - stage: valid
+      split_name: valid
+      dataset: WN18RR_fs_55
     - stage: test
       split_name: test
+      dataset: FB15K237_fs_101
     - stage: test
-      split_name: train
+      split_name: test
+      dataset: FB15K237_fs_103
+    - stage: test
+      split_name: test
+      dataset: FB15K237_fs_105
+    - stage: test
+      split_name: test
+      dataset: FB15K237_fs_201
+    - stage: test
+      split_name: test
+      dataset: FB15K237_fs_203
+    - stage: test
+      split_name: test
+      dataset: FB15K237_fs_205
+    - stage: test
+      split_name: test
+      dataset: WN18RR_fs_51
+    - stage: test
+      split_name: test
+      dataset: WN18RR_fs_53
+    - stage: test
+      split_name: test
+      dataset: WN18RR_fs_55

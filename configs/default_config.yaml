@@ -21,3 +21,4 @@ task_names:
   - arxiv
 llm_name: "ST"
 llm_b_size: 1
+val_interval: 1
