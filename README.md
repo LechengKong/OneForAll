@@ -23,6 +23,18 @@ including, [OGB](https://ogb.stanford.edu/), [GIMLET](https://github.com/zhao-ht
 and [villmow](https://github.com/villmow/datasets_knowledge_embedding/tree/master) for providing wonderful raw
 graph/text data that make our work possible.
 
+## 🔥News
+
+OneForAll underwent a major revision, where we cleaned up the code and fixed several reported bugs. The major updates
+are:
+
+- Use yaml configs to specify tasks, see [Configuration Section](#configuration-explained) for details.
+- Updated graph prompting logic, where users can design their own prompting more freely.
+- Use only one Few-shot dataset for few-shot prompting of different levels of tasks.
+
+If you previously used our repository, please pull and delete the old generated feature/text files and regenerate. Sorry
+for the inconvenience.
+
 ## Requirements
 
 To install requirement for the project using conda:
