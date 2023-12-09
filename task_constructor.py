@@ -468,7 +468,6 @@ class UnifiedTaskConstructor:
         return self.preprocess_storage[split_key]
 
     def add_dataset(self, stage_config, dataset_config):
-        print(dataset_config)
         data = self.get_ofa_data(dataset_config)
         split = self.get_data_split(dataset_config)
         stage_name = self.get_stage_name(stage_config, dataset_config)
