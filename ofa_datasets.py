@@ -574,7 +574,7 @@ class MultiDataset(DatasetWithCollate):
         if not isinstance(self.dataset_multiple, list):
             self.dataset_multiple = (np.zeros(len(self.sizes), dtype=float) + self.dataset_multiple)
         self.min_ratio = min_ratio
-        if isinstance(self.min_ratio, float):
+        if not isinstance(self.min_ratio, list):
             self.min_ratio = np.zeros(len(self.sizes), dtype=float) + self.min_ratio
         self.mode = mode
         if mode is not None:
